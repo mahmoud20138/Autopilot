@@ -1,0 +1,46 @@
+{
+  "name": "autopilot-agent-skill",
+  "version": "1.0.0",
+  "description": "Autonomous orchestrator skill for OpenClaude and Claude Code. Takes a goal, discovers available tools, decomposes into phases, maps to skills, executes, and monitors until done.",
+  "main": "bin/install.js",
+  "bin": {
+    "autopilot-agent-skill": "./bin/install.js"
+  },
+  "scripts": {
+    "test": "node bin/install.js --help"
+  },
+  "keywords": [
+    "openclaude",
+    "claude-code",
+    "skill",
+    "autopilot",
+    "agent",
+    "orchestrator",
+    "cli"
+  ],
+  "author": "Mahmoud20",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mahmoud20138/Autopilot.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mahmoud20138/Autopilot/issues"
+  },
+  "homepage": "https://github.com/mahmoud20138/Autopilot#readme",
+  "dependencies": {
+    "inquirer": "^8.2.6",
+    "chalk": "^4.1.2"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "files": [
+    "bin/",
+    "lib/",
+    "skills/",
+    "README.md",
+    "CHANGELOG.md",
+    "examples/"
+  ]
+}
