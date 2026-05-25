@@ -9,6 +9,15 @@ const args = process.argv.slice(2);
 const isUpdate = args.includes('--update');
 const isRemove = args.includes('--remove');
 const isHelp = args.includes('--help') || args.includes('-h');
+const isVersion = args.includes('--version') || args.includes('-v');
+const isList = args.includes('--list') || args.includes('-l');
+
+// Show version
+if (isVersion) {
+  const pkg = require('../package.json');
+  console.log(pkg.version);
+  process.exit(0);
+}
 
 // Show help
 if (isHelp) {
@@ -21,11 +30,44 @@ ${chalk.bold('Usage:')}
   npx autopilot-agent-skill           Install the skill
   npx autopilot-agent-skill --update  Update to latest version
   npx autopilot-agent-skill --remove  Uninstall the skill
+  npx autopilot-agent-skill --list    List installed skills
+  npx autopilot-agent-skill --version Show current version
   npx autopilot-agent-skill --help    Show this help
 
 ${chalk.bold('After install:')}
   Use in your CLI: /autopilot "your goal here"
   `);
+  process.exit(0);
+}
+
+// List installed skills
+if (isList) {
+  const clis = [
+    { name: 'Copilot CLI', dir: detector.getSkillsDir('copilot') },
+    { name: 'Cursor', dir: detector.getSkillsDir('cursor') },
+    { name: 'Claude Code', dir: detector.getSkillsDir('claude-code') },
+    { name: 'OpenClaude', dir: detector.getSkillsDir('openclaude') },
+  ];
+
+  let found = false;
+  for (const cli of clis) {
+    if (!cli.dir) continue;
+    if (detector.isSkillInstalled(cli.dir)) {
+      const version = detector.getInstalledVersion(cli.dir);
+      console.log(chalk.green(`✓ ${cli.name}`));
+      console.log(chalk.gray(`  Path: ${cli.dir}/autopilot`));
+      if (version) {
+        console.log(chalk.gray(`  Version: ${version.installed}`));
+        console.log(chalk.gray(`  Installed: ${version.date}`));
+      }
+      found = true;
+    }
+  }
+
+  if (!found) {
+    console.log(chalk.yellow('Autopilot skill not installed.'));
+    console.log(chalk.gray('Run `npx autopilot-agent-skill` to install.'));
+  }
   process.exit(0);
 }
 
@@ -59,6 +101,7 @@ async function main() {
 
       if (!removed) {
         console.log(chalk.yellow('\nAutopilot skill not found.'));
+        console.log(chalk.gray('Nothing to remove. Run `npx autopilot-agent-skill` to install first.'));
       }
       return;
     }
@@ -88,7 +131,8 @@ async function main() {
       }
 
       if (!updated) {
-        console.log(chalk.yellow('\nAutopilot skill not found. Run without --update to install.'));
+        console.log(chalk.yellow('\nAutopilot skill not found.'));
+        console.log(chalk.gray('Run `npx autopilot-agent-skill` to install first.'));
       }
       return;
     }
@@ -98,6 +142,7 @@ async function main() {
 
     if (!targetDir) {
       console.log(chalk.red('\n✗ Could not determine skills directory.'));
+      console.log(chalk.gray('  Make sure Claude Code or OpenClaude is installed, or provide a custom path.'));
       process.exit(1);
     }
 
@@ -118,6 +163,11 @@ async function main() {
 
   } catch (error) {
     console.error(chalk.red(`\n✗ Error: ${error.message}`));
+    if (error.code === 'EACCES') {
+      console.error(chalk.gray('  Permission denied. Try running with elevated privileges.'));
+    } else if (error.code === 'ENOENT') {
+      console.error(chalk.gray('  Directory not found. Check that the CLI is installed.'));
+    }
     process.exit(1);
   }
 }

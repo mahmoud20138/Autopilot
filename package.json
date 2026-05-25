@@ -7,7 +7,8 @@
     "autopilot-agent-skill": "./bin/install.js"
   },
   "scripts": {
-    "test": "node bin/install.js --help"
+    "test": "jest --verbose",
+    "test:ci": "jest --ci --coverage"
   },
   "keywords": [
     "openclaude",
@@ -29,18 +30,22 @@
   },
   "homepage": "https://github.com/mahmoud20138/Autopilot#readme",
   "dependencies": {
-    "inquirer": "^8.2.6",
-    "chalk": "^4.1.2"
+    "chalk": "^4.1.2",
+    "inquirer": "^8.2.6"
   },
   "engines": {
     "node": ">=14.0.0"
   },
   "files": [
+    "__tests__/",
     "bin/",
     "lib/",
     "skills/",
     "README.md",
     "CHANGELOG.md",
     "examples/"
-  ]
+  ],
+  "devDependencies": {
+    "jest": "^30.4.2"
+  }
 }

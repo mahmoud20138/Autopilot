@@ -643,3 +643,132 @@ At any point if a hard blocker is encountered:
 4. Wait for user input
 
 Resume from where it stopped once the blocker is resolved.
+
+## Parallel Execution
+
+When phases are independent, execute them concurrently to save time.
+
+### Identifying Parallel Phases
+
+Two phases can run in parallel if:
+- Neither depends on the other's output
+- They don't modify the same files
+- They don't share state (e.g., both writing to the same test file)
+
+### Parallel Execution Pattern
+
+```
+Phase 1: Plan & Design → blocks Phase 2, 3
+Phase 2: Implement Auth ─┐→ both run in parallel → block Phase 4
+Phase 3: Implement API  ─┘
+Phase 4: Write Tests → blocks Phase 5
+Phase 5: Review & Ship
+```
+
+### How to Execute in Parallel
+
+When phases are independent:
+1. Create tasks for all parallel phases
+2. Use Agent tool with `run_in_background: true` for each
+3. Monitor all background agents
+4. Wait for all to complete before starting dependent phases
+
+```
+# Launch parallel agents
+Agent({ name: "implement-auth", prompt: "...", run_in_background: true })
+Agent({ name: "implement-api", prompt: "...", run_in_background: true })
+
+# Wait for both to complete, then continue
+```
+
+### When NOT to Parallelize
+
+- When phases share files or state
+- When one phase's output is another's input
+- When the project is small enough that parallelism adds overhead
+- When debugging (sequential is better for tracing issues)
+
+## Progress Reporting
+
+Report progress at natural milestones, not after every action.
+
+### When to Report
+
+- After each phase completes
+- After a significant milestone within a phase (e.g., "auth module done")
+- When encountering a blocker
+- Before starting a complex phase
+
+### Progress Format
+
+```
+Progress: Phase 2/5 — Implement Auth
+  ✓ Phase 1: Plan & Design (complete)
+  → Phase 2: Implement Auth (in progress — JWT middleware done, routes pending)
+  ○ Phase 3: Write Tests
+  ○ Phase 4: Review
+  ○ Phase 5: Ship
+```
+
+### What NOT to Report
+
+- Every file read or write
+- Every command executed
+- Intermediate debugging steps
+- Routine task updates
+
+## Enhanced Error Recovery
+
+Beyond basic retry, use these patterns for robust error handling.
+
+### Pattern 1: Root Cause Analysis
+
+When a phase fails:
+1. Read the error message carefully
+2. Check if it's a known issue (search error text)
+3. Identify if it's:
+   - **Configuration error** — wrong paths, missing env vars
+   - **Dependency error** — missing package, version mismatch
+   - **Logic error** — code bug, incorrect assumption
+   - **Environment error** — OS-specific, permission issue
+
+### Pattern 2: Incremental Rollback
+
+If a phase partially succeeds then fails:
+1. Identify what was completed successfully
+2. Identify what failed
+3. Only retry the failed part, not the entire phase
+
+### Pattern 3: Alternative Approaches
+
+When the primary approach fails:
+1. Try the simplest fix first
+2. If that fails, try a different library/tool
+3. If that fails, simplify the requirement
+4. If still failing, report as a blocker
+
+### Pattern 4: Graceful Degradation
+
+For non-critical features:
+1. If implementation is too complex, simplify
+2. If a dependency is unavailable, find alternatives
+3. If a feature can't be fully implemented, implement a subset
+4. Document what was simplified and why
+
+### Error Recovery Decision Tree
+
+```
+Phase fails
+├── Is it a quick fix? (< 5 min)
+│   └── Yes → Fix and retry
+├── Is it a dependency issue?
+│   └── Yes → Install/find alternative
+├── Is it a logic error?
+│   └── Yes → Debug, fix, retry
+├── Is it an environment issue?
+│   └── Yes → Check OS/permissions, adapt
+└── None of the above?
+    └── Try alternative skill/approach
+        └── Still failing?
+            └── Report blocker (if critical) or skip (if non-critical)
+```
