@@ -1,40 +1,58 @@
-# autopilot-agent-skill
+# Autopilot Agent Skill
 
-> **Fully autonomous AI agent orchestrator** — Give it a goal, and it runs everything end-to-end without asking for confirmation between steps.
+**Fully autonomous AI agent orchestrator** — Give it a goal, it runs everything end-to-end without confirmation.
 
 [![npm version](https://img.shields.io/npm/v/autopilot-agent-skill.svg)](https://www.npmjs.com/package/autopilot-agent-skill)
+[![npm downloads](https://img.shields.io/npm/dm/autopilot-agent-skill.svg)](https://www.npmjs.com/package/autopilot-agent-skill)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![GitHub Stars](https://img.shields.io/github/stars/mahmoud20138/Autopilot)](https://github.com/mahmoud20138/Autopilot/stargazers)
+[![GitHub Issues](https://img.shields.io/github/issues/mahmoud20138/Autopilot)](https://github.com/mahmoud20138/Autopilot/issues)
+
+> Works with **Claude Code** and **OpenClaude**. Install once, use everywhere.
 
 ---
 
-## What Is This?
+## Why Autopilot?
 
-**Autopilot Agent Skill** is an autonomous orchestrator that works with **Claude Code** and **OpenClaude**. You give it a single goal, and it:
+Most AI coding assistants stop and ask "should I continue?" between every step. Autopilot doesn't.
 
-1. **Discovers** what tools, skills, and plugins you have installed
-2. **Analyzes** your goal and breaks it into logical phases
-3. **Maps** each phase to the best available skill on your system
-4. **Executes** each phase automatically, one after another
-5. **Monitors** progress and retries if something fails
-6. **Verifies** everything is done (builds, tests, lint) before reporting completion
-
-**You never confirm between steps.** It runs until the project is done or hits a blocker it can't resolve.
-
----
-
-## Install
-
-```bash
-npm i autopilot-agent-skill
+```
+You:   /autopilot "build a REST API with JWT auth and tests"
+Agent: [discovered 12 skills, 3 MCP servers, 6 CLI tools]
+       [planning → implementing → testing → reviewing → shipping]
+       Done. All tests pass. Ready to merge.
 ```
 
-Or use npx (no global install needed):
+**Zero confirmations. Full autonomy. End-to-end execution.**
+
+---
+
+## Key Features
+
+- **Smart Discovery** — Automatically finds your skills, MCP servers, and CLI tools
+- **Phase Decomposition** — Breaks any goal into logical phases (plan, implement, test, review, ship)
+- **Dynamic Skill Mapping** — Routes each phase to your best installed skill, with LLM fallback
+- **Self-Healing** — Retries failed phases with adjusted prompts, tries alternative skills
+- **Final Verification** — Builds, tests, and lints before reporting done
+- **Zero Config** — Works out of the box with whatever you have installed
+
+---
+
+## Quick Start
 
 ```bash
+# Install the skill
+npm i -g autopilot-agent-skill
+
+# Or use npx (no install)
 npx autopilot-agent-skill
 ```
 
-The installer will detect which CLI you're using and install the skill to the correct directory.
+Then in your CLI:
+
+```
+/autopilot "your goal here"
+```
 
 ---
 
@@ -58,116 +76,37 @@ npx autopilot-agent-skill --help    # Show help
 
 ---
 
-## Usage
+## Usage Examples
 
-After installation, use the skill in your CLI:
-
-```
-/autopilot "build a REST API with JWT authentication and tests"
-```
-
-### Example Goals
-
-**Simple task:**
 ```
 /autopilot "add a health check endpoint to my API"
-```
-
-**Bug fix:**
-```
 /autopilot "fix the login timeout error"
-```
-
-**Full project:**
-```
-/autopilot "build a user authentication system with JWT, tests, and documentation"
-```
-
-**Refactor:**
-```
+/autopilot "build a user authentication system with JWT, tests, and docs"
 /autopilot "refactor the database layer to use repositories"
+/autopilot "set up CI/CD with GitHub Actions"
 ```
 
 ---
 
-## How It Works — Step by Step
+## How It Works
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     AUTOPILOT PIPELINE                      │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│  1. INPUT                                                   │
-│     You type: /autopilot "your goal"                        │
-│                                                             │
-│  2. DISCOVERY                                               │
-│     Scans your system for:                                  │
-│     • Installed skills (from skills directory)              │
-│     • MCP servers (codegraph, playwright, context7, etc.)   │
-│     • CLI tools (git, npm, python, pytest, etc.)            │
-│     • Project context (language, framework, test setup)     │
-│                                                             │
-│  3. ANALYSIS                                                │
-│     Understands your goal:                                  │
-│     • What type of task (feature, bug, refactor, project)   │
-│     • How big is the scope                                  │
-│     • What constraints exist                                │
-│                                                             │
-│  4. PHASE DETECTION                                         │
-│     Breaks the goal into logical phases:                    │
-│     Phase 1: Plan & Design                                  │
-│     Phase 2: Implement                                      │
-│     Phase 3: Test                                           │
-│     Phase 4: Review                                         │
-│     Phase 5: Ship                                           │
-│                                                             │
-│  5. SKILL MAPPING                                           │
-│     Matches each phase to your installed skills:            │
-│     • Planning → writing-plans, brainstorming               │
-│     • Implementation → subagent-driven-development          │
-│     • Testing → tdd, test-driven-development                │
-│     • Review → requesting-code-review                       │
-│     • Shipping → finishing-a-development-branch             │
-│     (No skills? Falls back to direct LLM reasoning)         │
-│                                                             │
-│  6. PROMPT GENERATION                                       │
-│     Creates a tailored prompt for each phase:               │
-│     • Uses base templates for common phase types            │
-│     • Adds project-specific context                         │
-│     • Includes outputs from previous phases                 │
-│                                                             │
-│  7. EXECUTION                                               │
-│     Runs each phase automatically:                          │
-│     • Invokes the mapped skill with the prompt              │
-│     • Commits work frequently                               │
-│     • Moves to next phase without asking                    │
-│                                                             │
-│  8. MONITORING                                              │
-│     Polls progress during execution:                        │
-│     • Checks task list status                               │
-│     • Checks git status                                     │
-│     • Runs tests if available                               │
-│     • Runs builds if available                              │
-│     • Retries failed phases (max 2 retries)                 │
-│                                                             │
-│  9. COMPLETION                                              │
-│     Final verification before reporting done:               │
-│     • Build check                                           │
-│     • Test check                                            │
-│     • Lint check                                            │
-│     • Git status                                            │
-│     • Reports: "All done! Project goal achieved."           │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
+Input → Discovery → Analysis → Phase Detection → Skill Mapping → Prompt Generation → Execution → Monitor → Done
 ```
 
----
+| Step | What Happens |
+|------|-------------|
+| **1. Discovery** | Scans for installed skills, MCP servers, CLI tools, project context |
+| **2. Analysis** | Parses your goal — identifies task type, scope, constraints |
+| **3. Phase Detection** | Decomposes into logical phases (plan, build, test, review, ship) |
+| **4. Skill Mapping** | Matches each phase to the best available skill on your system |
+| **5. Execution** | Runs each phase sequentially with auto-generated prompts |
+| **6. Monitoring** | Polls task status, git, tests, builds — retries on failure |
+| **7. Verification** | Final build/test/lint check before reporting done |
 
-## What Skills Does It Use?
+### Skill Mapping
 
-The autopilot **dynamically discovers** whatever skills you have installed. It does NOT assume any specific skills exist.
-
-**Common skill mappings:**
+The autopilot **dynamically discovers** whatever you have installed — it does NOT assume any specific skills exist.
 
 | Phase | Skill (if installed) | Fallback |
 |-------|---------------------|----------|
@@ -179,52 +118,33 @@ The autopilot **dynamically discovers** whatever skills you have installed. It d
 | Verify | `verification-before-completion` | LLM verifies directly |
 | Ship | `finishing-a-development-branch` | LLM ships directly |
 
-**If you have zero skills installed**, it still works — the agent handles everything using its own reasoning.
+**Zero skills installed? Still works.** The agent handles everything with its own reasoning.
 
 ---
 
 ## MCP Server Support
 
-The autopilot detects and uses MCP servers you have configured:
+Automatically detects and uses configured MCP servers:
 
 | MCP Server | Used For |
 |------------|----------|
-| **CodeGraph** | Understanding codebase structure, finding symbols |
-| **Playwright** | Testing web UIs |
-| **Context7** | Fetching up-to-date documentation |
+| **CodeGraph** | Codebase structure, symbol lookup, impact analysis |
+| **Playwright** | Web UI testing |
+| **Context7** | Up-to-date library documentation |
 
 ---
 
 ## Failure Handling
 
-If a phase fails:
+If a phase fails, Autopilot:
 
 1. Analyzes the failure reason
 2. Adjusts the prompt with more context
-3. Retries the same skill (max 2 retries)
-4. If still failing, tries an alternative skill
-5. If no alternative works, skips the phase (if non-critical) or reports a blocker
+3. Retries (max 2 attempts)
+4. Tries an alternative skill
+5. Skips (if non-critical) or reports a blocker
 
-**The agent never gives up without trying alternatives.**
-
----
-
-## Stop Conditions
-
-**The agent stops only when:**
-- All phases completed successfully
-- Final verification passes (build, tests, lint)
-- Project goal is achieved
-
-**The agent never stops for:**
-- "Should I continue?" prompts
-- Progress summaries
-- Confirmation between phases
-
-**The agent pauses only if:**
-- A hard blocker that no skill can resolve
-- Missing external dependency
-- Ambiguous requirement that has multiple valid interpretations
+**It never gives up without trying alternatives.**
 
 ---
 
@@ -240,64 +160,40 @@ autopilot-agent-skill/
 │   └── prompts.js          # Interactive prompts
 ├── skills/
 │   └── autopilot/
-│       └── SKILL.md        # The actual skill (646 lines)
+│       └── SKILL.md        # The actual skill
 ├── examples/
 │   ├── basic-usage.md      # Simple task examples
 │   └── full-project.md     # Full project examples
 ├── .github/
 │   └── workflows/
 │       └── publish.yml     # Auto-publish to npm on release
-├── package.json
-├── README.md
-└── CHANGELOG.md
+├── LICENSE
+├── CHANGELOG.md
+└── README.md
 ```
 
 ---
 
-## For Developers
+## Contributing
 
-### Local Development
+Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
-```bash
-git clone https://github.com/mahmoud20138/Autopilot.git
-cd Autopilot
-npm install
-node bin/install.js --help
-```
-
-### Publishing
-
-```bash
-npm login
-npm publish
-```
-
-GitHub Actions will auto-publish when you create a release.
-
----
-
-## Changelog
-
-### 1.0.0 (2026-05-25)
-
-- Initial release
-- Autonomous orchestrator skill
-- Dynamic discovery of skills, MCP servers, CLI tools
-- LLM-driven phase detection
-- Hybrid prompt generation (templates + customization)
-- Poll-based monitoring with retry logic
-- Support for Claude Code and OpenClaude
-- Install, update, and remove commands
+1. Fork the repo
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
 ---
 
 ## Links
 
-- **GitHub**: [github.com/mahmoud20138/Autopilot](https://github.com/mahmoud20138/Autopilot)
 - **npm**: [npmjs.com/package/autopilot-agent-skill](https://www.npmjs.com/package/autopilot-agent-skill)
+- **GitHub**: [github.com/mahmoud20138/Autopilot](https://github.com/mahmoud20138/Autopilot)
+- **Issues**: [Report a bug or request a feature](https://github.com/mahmoud20138/Autopilot/issues)
 
 ---
 
 ## License
 
-MIT
+[MIT](LICENSE) — Copyright (c) 2026 Mahmoud20
