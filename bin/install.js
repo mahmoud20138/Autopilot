@@ -47,6 +47,7 @@ if (isList) {
     { name: 'Cursor', dir: detector.getSkillsDir('cursor') },
     { name: 'Claude Code', dir: detector.getSkillsDir('claude-code') },
     { name: 'OpenClaude', dir: detector.getSkillsDir('openclaude') },
+    { name: 'Kilo', dir: detector.getSkillsDir('kilo') },
   ];
 
   let found = false;
@@ -80,6 +81,7 @@ async function main() {
       const skillPaths = [
         detector.getSkillsDir('claude-code'),
         detector.getSkillsDir('openclaude'),
+        detector.getSkillsDir('kilo'),
       ].filter(Boolean);
 
       let removed = false;
@@ -111,6 +113,7 @@ async function main() {
       const skillPaths = [
         detector.getSkillsDir('claude-code'),
         detector.getSkillsDir('openclaude'),
+        detector.getSkillsDir('kilo'),
       ].filter(Boolean);
 
       let updated = false;

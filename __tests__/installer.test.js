@@ -33,7 +33,9 @@ describe('installer', () => {
       const data = JSON.parse(fs.readFileSync(versionFile, 'utf8'));
       expect(data).toHaveProperty('installed');
       expect(data).toHaveProperty('date');
+      expect(data).toHaveProperty('cli');
       expect(data.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(data.cli).toBe(path.basename(path.dirname(tmpDir)));
     });
   });
 

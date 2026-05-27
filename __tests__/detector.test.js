@@ -19,6 +19,21 @@ describe('detector', () => {
       const result = detector.getSkillsDir('unknown');
       expect(result).toBeNull();
     });
+
+    test('returns copilot skills dir', () => {
+      const result = detector.getSkillsDir('copilot');
+      expect(result).toBe(path.join(os.homedir(), '.config', 'github-copilot', 'skills'));
+    });
+
+    test('returns cursor skills dir', () => {
+      const result = detector.getSkillsDir('cursor');
+      expect(result).toBe(path.join(os.homedir(), '.cursor', 'skills'));
+    });
+
+    test('returns kilo skills dir', () => {
+      const result = detector.getSkillsDir('kilo');
+      expect(result).toBe(path.join(os.homedir(), '.config', 'kilo', 'skills'));
+    });
   });
 
   describe('isSkillInstalled', () => {
@@ -64,6 +79,16 @@ describe('detector', () => {
       fs.mkdirSync(skillDir, { recursive: true });
       fs.writeFileSync(path.join(skillDir, '.version'), 'not json');
       expect(detector.getInstalledVersion(tmpDir)).toBeNull();
+    });
+
+    test('returns version data with cli field', () => {
+      const skillDir = path.join(tmpDir, 'autopilot');
+      fs.mkdirSync(skillDir, { recursive: true });
+      const versionData = { installed: '1.1.0', date: '2026-05-27', cli: '.openclaude' };
+      fs.writeFileSync(path.join(skillDir, '.version'), JSON.stringify(versionData));
+      const result = detector.getInstalledVersion(tmpDir);
+      expect(result.installed).toBe('1.1.0');
+      expect(result.cli).toBe('.openclaude');
     });
   });
 });

@@ -12,7 +12,7 @@ Fully autonomous orchestrator. Takes a user's goal, runs it to completion withou
 
 **Core principle:** Never implement anything directly. Orchestrate existing skills. Each phase delegates to a real skill.
 
-**Portability:** Works on any PC. Dynamically discovers whatever skills, plugins, MCP servers, and CLI tools are installed. No hardcoded skill names.
+**Portability:** Works on any PC (macOS, Linux, Windows). Dynamically discovers whatever skills, plugins, MCP servers, and CLI tools are installed. No hardcoded skill names.
 
 ## Pipeline
 
@@ -42,22 +42,19 @@ Before doing anything, build an inventory of what's available on this system.
 
 ### Step 1: Scan Skills Directory
 
-```bash
-# Find skills directory
-SKILLS_DIR="${HOME}/.openclaude/skills"
-if [ -d "$SKILLS_DIR" ]; then
-  for skill_dir in "$SKILLS_DIR"/*/; do
-    if [ -f "${skill_dir}SKILL.md" ]; then
-      # Read name and description from frontmatter
-      head -5 "${skill_dir}SKILL.md"
-    fi
-  done
-fi
-```
+Check multiple known skills directories. Use your platform's native file-system tools instead of shell commands for maximum portability:
 
-For each skill found, extract:
-- Name (from `name:` field in frontmatter)
-- Description (from `description:` field in frontmatter)
+| CLI | Skills Directory |
+|-----|----------------|
+| Claude Code | `~/.claude/skills/` |
+| OpenClaude | `~/.openclaude/skills/` |
+| GitHub Copilot | `~/.config/github-copilot/skills/` |
+| Cursor | `~/.cursor/skills/` |
+| Kilo | `~/.config/kilo/skills/` |
+
+For each directory that exists, iterate over subdirectories looking for `SKILL.md` files. Read the YAML frontmatter to extract:
+- `name:` field
+- `description:` field
 
 Build a catalog: `[{"name": "skill-name", "description": "what it does"}, ...]`
 
@@ -70,30 +67,36 @@ Check what MCP tools are available by looking at tool names in the system contex
 
 ### Step 3: Scan CLI Tools
 
-Check PATH for common tools:
+Check PATH for common tools. Use your platform's native command to probe each tool:
+
 ```bash
+# macOS / Linux
 for cmd in git node npm python pip pytest cargo go java mvn gradle docker; do
   command -v $cmd && echo "$cmd: available"
 done
 ```
 
+```powershell
+# Windows
+$tools = 'git','node','npm','python','pip','pytest','cargo','go','java','mvn','gradle','docker'
+foreach ($cmd in $tools) { if (Get-Command $cmd -ErrorAction SilentlyContinue) { Write-Output "$cmd: available" } }
+```
+
 ### Step 4: Scan Project Context
 
-Check for project indicators:
+Check for project indicators. Use your platform's file-system tooling (Read, Glob, Bash) to probe:
+
+- `package.json` → Node.js project
+- `requirements.txt` or `pyproject.toml` → Python project
+- `Cargo.toml` → Rust project
+- `go.mod` → Go project
+- `pom.xml` → Java/Maven project
+- `build.gradle` → Java/Gradle project
+- `jest.config.js` → Jest testing
+- `pytest.ini` or `setup.cfg` → Pytest setup
+- `.github/workflows/` directory → GitHub Actions CI
+
 ```bash
-# Language/Framework detection
-[ -f "package.json" ] && echo "Node.js project" && cat package.json | head -20
-[ -f "requirements.txt" ] && echo "Python project"
-[ -f "Cargo.toml" ] && echo "Rust project"
-[ -f "go.mod" ] && echo "Go project"
-[ -f "pom.xml" ] && echo "Java/Maven project"
-[ -f "build.gradle" ] && echo "Java/Gradle project"
-
-# Test setup
-[ -f "jest.config.js" ] && echo "Jest testing"
-[ -f "pytest.ini" ] || [ -f "setup.cfg" ] && echo "Pytest setup"
-[ -f ".github/workflows" ] && echo "GitHub Actions CI"
-
 # Git status
 git status --short
 git log --oneline -5
@@ -457,12 +460,12 @@ Check these indicators periodically:
    pytest --tb=short 2>&1 | tail -20
    ```
 
-4. **Build output** (if build tool detected)
+ 4. **Build output** (if build tool detected)
    ```bash
    # Node.js
    npm run build 2>&1 | tail -10
    # Python
-   python -m py_compile src/**/*.py
+   python -m compileall src
    ```
 
 ### Phase Completion Criteria
