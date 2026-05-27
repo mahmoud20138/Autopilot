@@ -8,6 +8,7 @@
 - Support for GitHub Copilot CLI skills directory
 - Support for Cursor editor skills directory
 - Support for Kilo skills directory
+- Restored Launch Tracker, Live Event Streaming, and Stop Tracker sections in SKILL.md
 - Parallel execution guidance in SKILL.md
 - Progress reporting patterns in SKILL.md
 - Enhanced error recovery decision tree in SKILL.md
