@@ -81,6 +81,8 @@ async function main() {
       const skillPaths = [
         detector.getSkillsDir('claude-code'),
         detector.getSkillsDir('openclaude'),
+        detector.getSkillsDir('copilot'),
+        detector.getSkillsDir('cursor'),
         detector.getSkillsDir('kilo'),
       ].filter(Boolean);
 
@@ -96,8 +98,8 @@ async function main() {
             }
           } else {
             console.log(chalk.yellow('\nCancelled.'));
+            break;
           }
-          break;
         }
       }
 
@@ -113,6 +115,8 @@ async function main() {
       const skillPaths = [
         detector.getSkillsDir('claude-code'),
         detector.getSkillsDir('openclaude'),
+        detector.getSkillsDir('copilot'),
+        detector.getSkillsDir('cursor'),
         detector.getSkillsDir('kilo'),
       ].filter(Boolean);
 
@@ -129,7 +133,6 @@ async function main() {
             console.log(chalk.yellow('\nNot installed. Run without --update to install.'));
           }
           updated = true;
-          break;
         }
       }
 

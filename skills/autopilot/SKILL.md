@@ -454,16 +454,16 @@ Check these indicators periodically:
 
 3. **Test results** (if test framework detected)
    ```bash
-   # Node.js
-   npm test 2>&1 | tail -20
+   # Node.js — capture output directly
+   npm test
    # Python
-   pytest --tb=short 2>&1 | tail -20
+   pytest --tb=short
    ```
 
  4. **Build output** (if build tool detected)
    ```bash
    # Node.js
-   npm run build 2>&1 | tail -10
+   npm run build
    # Python
    python -m compileall src
    ```
@@ -512,30 +512,13 @@ After all phases execute, verify the project is done.
 
 ### Final Verification
 
-Run these checks:
+Run these checks using your platform's native tools to detect project type:
 
-1. **Build check**
-   ```bash
-   # Detect and run appropriate build command
-   [ -f "package.json" ] && npm run build
-   [ -f "Cargo.toml" ] && cargo build
-   [ -f "go.mod" ] && go build ./...
-   ```
+1. **Build check** — run the project's build command if a build config exists (`package.json`, `Cargo.toml`, `go.mod`, `pom.xml`, `build.gradle`).
 
-2. **Test check**
-   ```bash
-   # Detect and run appropriate test command
-   [ -f "package.json" ] && npm test
-   [ -f "requirements.txt" ] && pytest
-   [ -f "Cargo.toml" ] && cargo test
-   [ -f "go.mod" ] && go test ./...
-   ```
+2. **Test check** — run the project's test command (`npm test`, `pytest`, `cargo test`, `go test ./...`, etc.).
 
-3. **Lint check** (if linter configured)
-   ```bash
-   [ -f ".eslintrc.js" ] && npx eslint .
-   [ -f "setup.cfg" ] && flake8 .
-   ```
+3. **Lint check** — run a linter if configured (`.eslintrc.js`, `setup.cfg`, `pyproject.toml`, etc.).
 
 4. **Git status**
    ```bash

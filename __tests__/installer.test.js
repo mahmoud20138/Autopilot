@@ -73,5 +73,15 @@ describe('installer', () => {
       expect(result.status).toBe('removed');
       expect(fs.existsSync(path.join(tmpDir, 'autopilot'))).toBe(false);
     });
+
+    test('removes skill directory with subdirectories', () => {
+      installer.installSkill(tmpDir);
+      const subDir = path.join(tmpDir, 'autopilot', 'subdir');
+      fs.mkdirSync(subDir, { recursive: true });
+      fs.writeFileSync(path.join(subDir, 'file.md'), 'test');
+      const result = installer.removeSkill(tmpDir);
+      expect(result.status).toBe('removed');
+      expect(fs.existsSync(path.join(tmpDir, 'autopilot'))).toBe(false);
+    });
   });
 });

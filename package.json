@@ -35,16 +35,14 @@
     "inquirer": "^8.2.6"
   },
   "engines": {
-    "node": ">=14.0.0"
+    "node": ">=14.14.0"
   },
   "files": [
-    "__tests__/",
     "bin/",
     "lib/",
     "skills/",
     "README.md",
-    "CHANGELOG.md",
-    "examples/"
+    "CHANGELOG.md"
   ],
   "devDependencies": {
     "jest": "^30.4.2"
