@@ -17,7 +17,7 @@ Fully autonomous orchestrator. Takes a user's goal, runs it to completion withou
 ## Pipeline
 
 ```
-Input → Discovery → Analysis → Phase Detection → Skill Mapping → Prompt Generation → Execution → Monitor → Done
+Input → Discovery → Launch Tracker → Analysis → Phase Detection → Skill Mapping → Prompt Generation → Execution → Monitor → Stop Tracker → Done
 ```
 
 ## Stop Conditions
@@ -116,6 +116,64 @@ Discovery complete:
 ```
 
 This inventory drives all downstream decisions.
+
+## Launch Tracker (Automatic — No Options)
+
+**The tracker and dashboard start AUTOMATICALLY. No extra steps. No options. Everything begins when autopilot is called.**
+
+As soon as Discovery completes, the orchestrator MUST:
+
+```bash
+# 1. Setup
+mkdir -p .autopilot
+rm -f .autopilot/events.ndjson
+
+# 2. Write initial state
+cat > .autopilot/state.json << 'EOF'
+{
+  "goal": "{user_goal}",
+  "status": "running",
+  "started_at": $(date +%s),
+  "current_phase": 0,
+  "phases": [],
+  "skills_used": {},
+  "mcps_used": {},
+  "clis_used": {},
+  "files_changed": [],
+  "errors": [],
+  "total_duration_s": 0
+}
+EOF
+
+# 3. Emit discovery event
+echo '{"t":"discovery","ts":'$(date +%s)',"data":{...}}' >> .autopilot/events.ndjson
+
+# 4. Start tracker server in background — auto-opens browser (default port 8765)
+python3 tracker/tracker.py &
+```
+
+**That's it.** The dashboard is now live. All subsequent phases stream events automatically.
+
+### Live Event Streaming
+
+Every state change during execution MUST emit an event to `.autopilot/events.ndjson`:
+
+| Action | Event Type | When |
+|--------|-----------|------|
+| Phase starts | `phase_start` | Before executing a phase |
+| Skill invoked | `skill_invoked` | After calling a skill |
+| MCP tool used | `mcp_called` | After MCP tool call |
+| CLI command run | `cli_called` | After CLI command |
+| File changed | `file_changed` | After creating/modifying a file |
+| Phase ends | `phase_end` | After phase completes or fails |
+| Retry | `phase_start` | When retrying a failed phase |
+| Final check | `verification` | After build/test/lint checks |
+| All done | `complete` | After all phases pass |
+
+After each event:
+1. Append the event to `.autopilot/events.ndjson`
+2. Update `.autopilot/state.json` with the new state
+3. The dashboard auto-refreshes via SSE — no manual action needed
 
 ## Analysis
 
@@ -395,20 +453,38 @@ Accomplish the phase goal. Use available tools and skills as needed.
 
 Execute each phase sequentially. Never pause for confirmation between phases.
 
+**LIVE TRACKING:** Every action MUST emit an event to `.autopilot/events.ndjson` so the dashboard shows real-time progress.
+
 ### Phase Execution Loop
 
 ```
 For each phase in order:
-  1. Mark phase as in_progress (TaskUpdate)
-  2. Generate prompt (from Prompt Generation)
-  3. Invoke the mapped skill with the prompt
+  1. Emit "phase_start" event → dashboard shows phase as in_progress (yellow pulse)
+  2. Mark phase as in_progress (TaskUpdate)
+  3. Generate prompt (from Prompt Generation)
+  4. Invoke the mapped skill with the prompt
      - If skill exists: Use Skill tool with skill name
      - If no skill: Execute directly with generated prompt
-  4. Monitor until phase completes (see Monitoring)
-  5. Mark phase as completed (TaskUpdate)
-  6. Record phase output for next phase's context
-  7. Move to next phase
+     - After skill invocation: emit "skill_invoked" event → dashboard updates skill usage bar
+     - Track MCP/CLI calls during execution
+     - After each file change: emit "file_changed" event → dashboard shows file in list
+  5. Monitor until phase completes (see Monitoring)
+  6. Emit "phase_end" event → dashboard shows phase as completed (green) or failed (red)
+  7. Mark phase as completed (TaskUpdate)
+  8. Record phase output for next phase's context
+  9. Move to next phase
 ```
+
+### Event Emission Helper
+
+After each state change, emit an event:
+
+```bash
+# Append directly (cross-platform: works with any shell that supports echo/redirect)
+echo '{"t":"<event_type>","ts":<unix_timestamp>,"data":{...}}' >> .autopilot/events.ndjson
+```
+
+After emitting the event, also update `.autopilot/state.json` so the dashboard has the latest snapshot.
 
 ### Skill Invocation
 
@@ -453,18 +529,19 @@ Check these indicators periodically:
    ```
 
 3. **Test results** (if test framework detected)
+   Run the project's test command directly and review the output:
    ```bash
-   # Node.js — capture output directly
    npm test
-   # Python
    pytest --tb=short
+   cargo test
+   go test ./...
    ```
 
- 4. **Build output** (if build tool detected)
+4. **Build output** (if build tool detected)
+   Run the project's build command directly and review the output:
    ```bash
-   # Node.js
    npm run build
-   # Python
+   cargo build
    python -m compileall src
    ```
 
@@ -509,6 +586,18 @@ Please try again with the adjusted approach.
 ## Completion
 
 After all phases execute, verify the project is done.
+
+### Stop Tracker
+
+Before generating the completion report, stop the tracker:
+
+1. Set `status: "complete"` in `.autopilot/state.json`
+2. Emit a "complete" event to `.autopilot/events.ndjson`
+3. The dashboard will show the final state
+4. Kill the tracker server process:
+   ```bash
+   kill $(pgrep -f tracker.py) 2>/dev/null || true
+   ```
 
 ### Final Verification
 
@@ -577,47 +666,66 @@ This is the complete flow that ties everything together.
    - Scan project context → detect language/framework/tooling
    - Present inventory summary
 
-3. RUN ANALYSIS
+3. LAUNCH TRACKER (AUTOMATIC)
+   - mkdir -p .autopilot && rm -f .autopilot/events.ndjson
+   - Write initial state.json
+   - Emit discovery event
+   - Run: python3 tracker/tracker.py &
+   - Dashboard auto-opens in browser (tracker.py handles this)
+   - All subsequent phases stream live to dashboard automatically
+
+4. RUN ANALYSIS
    - Parse goal
    - Identify task type (feature/fix/refactor/project/research/maintenance)
    - Identify scope (single-file/multi-file/full-project)
    - Identify constraints
    - Present analysis summary
+   - Emit analysis event → dashboard updates live
 
-4. DETECT PHASES
+5. DETECT PHASES
    - Decompose goal into ordered phases
    - Each phase: name + goal + complexity
    - Present phase plan
+   - Emit phase detection event → dashboard shows phase pipeline
 
-5. MAP SKILLS
+6. MAP SKILLS
    - For each phase: match to discovered skill
    - Map MCP tools and CLI tools per phase
    - Present skill assignments
 
-6. CREATE TASKS
+7. CREATE TASKS
    - TaskCreate for each phase
    - Set up dependencies (each phase blocks the next)
    - Present task list
 
-7. EXECUTE PHASES
+8. EXECUTE PHASES (LIVE TRACKING)
    - For each phase (in order):
-     a. TaskUpdate: mark in_progress
-     b. Generate prompt (template + customization)
-     c. Invoke skill or execute directly
-     d. Monitor until complete
-     e. TaskUpdate: mark completed
-     f. Record output for next phase
+     a. Emit phase_start event → dashboard shows phase as in_progress (yellow)
+     b. TaskUpdate: mark in_progress
+     c. Generate prompt (template + customization)
+     d. Invoke skill or execute directly
+        - After skill invocation: emit skill_invoked event → dashboard updates skill bar
+        - Track MCP/CLI calls during execution
+        - After each file change: emit file_changed event → dashboard shows file
+     e. Monitor until complete
+     f. Emit phase_end event → dashboard shows phase as completed (green)
+     g. TaskUpdate: mark completed
+     h. Record output for next phase
 
-8. FINAL VERIFICATION
+9. FINAL VERIFICATION
+   - Emit verification event → dashboard shows build/test/lint status
    - Run build check
    - Run test check
    - Run lint check
    - Check git status
 
-9. REPORT COMPLETION
-   - Present completion summary
-   - List all phases and results
-   - Confirm project goal achieved
+10. STOP TRACKER & REPORT COMPLETION
+    - Set status to "complete" in state.json
+    - Emit complete event → dashboard shows final summary
+    - Stop tracker server
+    - Present completion summary
+    - List all phases and results
+    - Confirm project goal achieved
 ```
 
 ### Error Recovery
@@ -655,17 +763,9 @@ Phase 5: Review & Ship
 
 When phases are independent:
 1. Create tasks for all parallel phases
-2. Use Agent tool with `run_in_background: true` for each
+2. Use your platform's background execution capability (e.g., `run_in_background` if available, or Task tool with subagents)
 3. Monitor all background agents
 4. Wait for all to complete before starting dependent phases
-
-```
-# Launch parallel agents
-Agent({ name: "implement-auth", prompt: "...", run_in_background: true })
-Agent({ name: "implement-api", prompt: "...", run_in_background: true })
-
-# Wait for both to complete, then continue
-```
 
 ### When NOT to Parallelize
 
