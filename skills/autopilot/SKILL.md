@@ -41,7 +41,13 @@ Input → Memory Check → Discovery → Analysis → Phase Detection → Skill/
 
 ## Step 0 — Memory Check (Always First)
 
-Before any other work, read `.agents/memory/MEMORY.md` and open any topic files relevant to the current goal. Apply documented constraints and past decisions immediately. If a past decision conflicts with what you observe now, trust the code and update the memory after the task.
+Check if `.agents/memory/MEMORY.md` exists. If it does, read it and open any topic files relevant to the current goal. Apply documented constraints and past decisions immediately. If a past decision conflicts with what you observe now, trust the code and update the memory after the task.
+
+If the file doesn't exist, create it with a minimal header and a note that this is the first autopilot session for this project:
+```markdown
+# Autopilot Memory
+First session for this project. No past decisions recorded.
+```
 
 ---
 
@@ -75,8 +81,9 @@ For each directory that exists, iterate over subdirectories looking for `SKILL.m
 When no local skill matches a phase, search for marketplace skills. Use these methods in order:
 
 a. **`npx skills search <topic>`** — If the `opencode` or `skills` CLI is available, search the skills registry for a matching skill.
-b. **Web search** — Use `websearch` or `webfetch` to search for skills at known registries (GitHub topic `opencode-skill`, `claude-code-skill`, etc.).
-c. **Temp skill loader** — If a skill is found remotely, use the `temp-skill` skill (when available) to fetch and load it without permanent installation.
+b. **`find-skills` skill** — If the `find-skills` skill is in `available_skills`, load it to search for and install skills matching the need.
+c. **Web search** — Use `websearch` or `webfetch` to search for skills at known registries (GitHub topic `opencode-skill`, `claude-code-skill`, etc.).
+d. **Temp skill loader** — If a skill is found remotely, use the `temp-skill` skill (when available) to fetch and load it without permanent installation.
 
 Marketplace-found skills go in the catalog with source `"marketplace"` and a `url` field.
 
@@ -163,7 +170,7 @@ Discovery complete:
   Project: language, framework, tooling detected
   Env vars: list set keys (not values), list missing critical ones
   Git: current branch, recent commits
-  Marketplace: reachable (npx skills / web search)
+  Marketplace: on demand (searched when no local skill matches)
 ```
 
 Source rules for loading:
@@ -259,6 +266,7 @@ Decision order:
 2. **MCP tool match** — Do MCP tools provide needed capability (codegraph for understanding, context7 for docs, playwright for E2E)?
 3. **Marketplace skill search** — No local skill matched. Search for a skill in the marketplace:
    - Run `npx skills search <phase-keywords>` if the skills CLI is available
+   - Or load the `find-skills` skill if it's in `available_skills`
    - Or use `websearch` to find a skill (GitHub search: `topic:claude-code-skill <keyword>` or `topic:opencode-skill <keyword>`)
    - If found, add to catalog with `source: "marketplace"` and use it
 4. **Integration/connection match** — Does a configured connection provide the needed capability?
@@ -335,6 +343,10 @@ Format:
 ## Discovery Summary
 {condensed inventory}
 
+## Loaded Skills
+<!-- Tracks which skills have been loaded this session to prevent re-loads -->
+- None yet
+
 ## Tasks
 
 ### T001: {Phase 1 name}
@@ -391,29 +403,38 @@ The `Action` field is a single sentence describing what the autopilot is doing r
 For each phase (respecting dependency order):
   1. Print Live Status Display: status → ▶ running, phase → current, action → "Starting phase"
   2. Update session plan: status → in_progress
-  3a. If a skill is mapped with source "system":
-      - Load it using the `skill` tool: `skill name: <skill-name>`
-  3b. If a skill is mapped with source "filesystem":
-      - Read SKILL.md directly from the discovered path
-  3c. If a skill is mapped with source "marketplace":
-      - Use `temp-skill` to fetch from URL, or webfetch the SKILL.md
-      - If fetch fails, use websearch for the skill's instructions as fallback
-  3d. Do not re-load a skill already loaded in this session
+  3a. If a skill is mapped:
+      - Check the session plan's "Loaded Skills" list. If this skill is already there, skip loading.
+      - If not loaded yet:
+        - source "system": load via `skill name: <skill-name>`, add skill name to Loaded Skills
+        - source "filesystem": read SKILL.md from path, add skill name to Loaded Skills
+        - source "marketplace": use `temp-skill` or webfetch SKILL.md; if fetch fails, websearch for instructions; add skill name to Loaded Skills
   4. Print Live Status Display: action → "{skill}: {brief description of task}"
-  5. Generate prompt (see Prompt Generation below)
-  6. Execute the phase using the mapped skill/tools
-  7. SELF-REVIEW: Does the output meet the phase's "Done When" criterion?
+  5. Break the phase into sub-tasks (2-5 verifiable steps). Record them in the session plan under the phase:
+     ```
+     Sub-tasks:
+       [ ] 1. {sub-task description}
+       [ ] 2. {sub-task description}
+       [ ] 3. {sub-task description}
+     ```
+  6. Generate prompt (see Prompt Generation below)
+  7. Execute the phase using the mapped skill/tools. After each sub-task completes, update the session plan and print a status update:
+     - Print Live Status Display: action → "{sub-task N} complete, working on {sub-task N+1}"
+     - Update sub-task: mark check
+  8. SELF-REVIEW: Does the output meet the phase's "Done When" criterion?
      - Check for TypeScript errors: pnpm run typecheck
      - Check for runtime errors: restart workflow, check logs
      - Check for broken imports: grep for unresolved symbols
-  8a. If output is correct:
+  9a. If output is correct:
       - Print Live Status Display: phase → done, action → "Completed: {result one-liner}"
       - Update session plan → done; record key output for next phases
-  8b. If output has errors:
+  9b. If output has errors:
       - Print Live Status Display: status → ⚠ retrying / ✗ failed
       - Enter Retry Logic (see below)
-  9. Move to next phase
+  10. Move to next phase
 ```
+
+**Sub-task tracking** — Break each phase into 2-5 verifiable sub-tasks before executing. Record them in the session plan under the phase. Mark each `[ ] → [x]` as it completes. This provides fine-grained progress for the status display and makes incremental rollback precise when retrying.
 
 ### Prompt Generation (Hybrid)
 
@@ -434,7 +455,7 @@ You are in the PLANNING phase.
 **Available Tools:** {discovered_tools}
 **User's Original Request:** {original_input}
 
-Create a detailed implementation plan. Save to docs/superpowers/plans/.
+Create a detailed implementation plan. Save it to the project's documentation directory (e.g. `docs/`, `docs/plans/`, or project root).
 Use a planning skill if available.
 ```
 
@@ -517,8 +538,8 @@ Phase 5: Review & Ship
 
 When phases are independent:
 1. Create tasks for all parallel phases
-2. Use the Agent tool with `run_in_background: true` for concurrent execution
-3. Monitor all background agents
+2. Use the `task` tool to launch parallel agents for concurrent execution
+3. Monitor all parallel agents
 4. Wait for all to complete before starting dependent phases
 
 **When NOT to parallelize:**
@@ -559,6 +580,7 @@ If a phase fails:
   7a. If a local skill is found: load it (skill tool / read SKILL.md) and retry (attempt 2 of 2).
   7b. If no local skill matches: search the marketplace:
       - Run `npx skills search <phase-keyword> <error-keyword>` if skills CLI is available
+      - Or load the `find-skills` skill if it's in `available_skills`
       - Or websearch for "opencode skill <phase-keyword> <error-keyword>"
       - If a marketplace skill is found, load it via temp-skill or webfetch and retry
   8. If no better skill found anywhere: try one alternative approach (different library, simpler implementation).
@@ -754,6 +776,5 @@ Before the completion report, propose up to 3 high-impact follow-ups (deferred s
 - **Never report completion with failing checks** — fix first, report after.
 - **Never read more than 10 files per turn** — use `codegraph_context` or `Explore` subagent for broad analysis.
 - **Never expose secrets** — env vars, tokens, and credentials must never appear in output or memory.
-- **Never use `console.log` in server code** — use proper logging libraries.
-- **Never hardcode ports** — always read from `process.env.PORT`.
+
 - **Never hardcode skill names** — always discover from the current system's inventory.
