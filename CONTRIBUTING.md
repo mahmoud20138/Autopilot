@@ -22,12 +22,22 @@ npm run test:ci
 
 ## Project Layout
 
-- `bin/install.js` — CLI entry point
-- `lib/detector.js` — Detects installed CLIs and resolves paths
-- `lib/installer.js` — Handles install, update, and remove operations
-- `lib/prompts.js` — Interactive CLI prompts
-- `skills/autopilot/SKILL.md` — The actual skill definition
-- `__tests__/` — Jest test suite
+```
+bin/install.js              — CLI entry point (install/update/remove/list)
+lib/detector.js             — Detects installed CLIs and resolves skill paths
+lib/installer.js            — Handles install, update, and remove operations
+lib/prompts.js              — Interactive CLI prompts
+skills/autopilot/SKILL.md   — The actual skill definition (the orchestrator)
+skills/autopilot/.version   — Version metadata
+examples/                   — Usage examples (basic-usage.md, full-project.md)
+__tests__/                  — Jest test suite
+.github/workflows/          — CI/CD (test.yml, publish.yml)
+CHANGELOG.md                — Version history
+CONTRIBUTING.md             — This file
+README.md                   — Package documentation
+package.json                — npm package config
+LICENSE                     — MIT license
+```
 
 ## Supported CLIs
 
@@ -37,6 +47,7 @@ npm run test:ci
 | OpenClaude | `~/.openclaude/skills/` |
 | GitHub Copilot | `~/.config/github-copilot/skills/` |
 | Cursor | `~/.cursor/skills/` |
+| Kilo | `~/.config/kilo/skills/` |
 
 ## Making Changes
 
@@ -45,6 +56,14 @@ npm run test:ci
 3. Run tests: `npm test`
 4. Commit with a descriptive message
 5. Push and open a PR
+
+## Releasing a New Version
+
+1. Update `package.json` version field
+2. Add entry to `CHANGELOG.md`
+3. Update `skills/autopilot/.version`
+4. Commit and push
+5. Create a GitHub release → npm publish runs automatically via GitHub Actions
 
 ## Adding New CLI Support
 

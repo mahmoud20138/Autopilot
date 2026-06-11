@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.2.0 (2026-06-11)
+
+### Features
+- **Merged v1.0.0 depth with v1.1.0 improvements** — restored full 10-step pipeline (Memory Check → Discovery → Analysis → Phase Detection → Skill Mapping → Session Plan → Execution → Monitoring → Verification → Completion) while keeping v1.1.0's multi-CLI discovery, MCP scanning, and prompt generation
+- **Step 0 — Memory Check** now reads `.agents/memory/MEMORY.md` before any work and applies past decisions
+- **MCP-aware discovery** — scans for Codegraph, Context7, and Playwright MCP servers with usage guidance for each
+- **Codegraph integration** — uses `codegraph_search`, `codegraph_context`, `codegraph_callers/callees`, `codegraph_impact`, and `codegraph_explore` before writing/editing code
+- **Hybrid prompt generation** — 6 phase templates (Planning, Implementation, Testing, Review, Debug, Ship) with LLM customization and fallback
+- **Enhanced error recovery** — Root Cause Analysis, Incremental Rollback, Graceful Degradation patterns, and error type classification (config/dependency/logic/environment)
+- **Expanded monitoring table** — added Rust (`cargo check`/`cargo build`) and Go (`go vet`/`go build`) alongside Node/TS and Python
+- **Parallel execution guidance** — clear rules for when to parallelize and when not to, using `Agent` tool with `run_in_background: true`
+- **Context budget rule** — never read more than 10 files per turn; use Codegraph or `Explore` subagent for broad analysis
+- **Session plan checkpoint** — `.local/session_plan.md` as single source of truth with resume-from-checkpoint support
+- **Output manifest** — tracks all artifacts and files produced across phases
+- **Follow-up tasks** — proposes up to 3 high-impact follow-ups before completion report
+- **Approval gates** — pauses for destructive actions (schema drops, bulk deletes, major library swaps)
+- **Expanded Hard Rules** — added "never hardcode skill names" and "never hardcode ports"
+
+### Improvements
+- SKILL.md rewritten for clarity — each step has concrete commands, tables, and examples
+- Discovery now includes env var scanning (keys only, not values)
+- Skill mapping includes MCP tools and CLI tools alongside skills
+- Session plan includes MCP and CLI tool fields per task
+- Completion report includes Tests and Security verification lines
+- Description updated to mention all 5 supported CLIs
+
 ## 1.1.0 (2026-05-27)
 
 ### Features
