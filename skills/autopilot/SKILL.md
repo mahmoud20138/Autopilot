@@ -17,7 +17,7 @@ Fully autonomous orchestrator. Takes a user's goal, runs it to completion withou
 ## Pipeline
 
 ```
-Input → Memory Check → Discovery → Analysis → Phase Detection → Skill/Tool Mapping → Session Plan → Execution → Verification → Completion Report
+Input → Memory Check → Discovery → Online Browser Search → Analysis → Phase Detection → Skill/Tool Mapping → Session Plan → Execution → Verification → Completion Report
 ```
 
 ## Stop Conditions
@@ -77,15 +77,20 @@ For each directory that exists, iterate over subdirectories looking for `SKILL.m
 - `name:` field
 - `description:` field
 
-**Source 3 — Marketplace / Remote Registry:**
-When no local skill matches a phase, search for marketplace skills. Use these methods in order:
+**Source 3 — Online Marketplace & Browser Search (Proactive):**
+Proactively search online registries, GitHub, and marketplaces for skills and plugins matching the goal — run during discovery, NOT deferred. Use these methods in order:
 
-a. **`npx skills search <topic>`** — If the `opencode` or `skills` CLI is available, search the skills registry for a matching skill.
-b. **`find-skills` skill** — If the `find-skills` skill is in `available_skills`, load it to search for and install skills matching the need.
-c. **Web search** — Use `websearch` or `webfetch` to search for skills at known registries (GitHub topic `opencode-skill`, `claude-code-skill`, etc.).
-d. **Temp skill loader** — If a skill is found remotely, use the `temp-skill` skill (when available) to fetch and load it without permanent installation.
+a. **`find-skills` skill** — If the `find-skills` skill is in `available_skills`, load it to search marketplaces for skills matching the goal keywords. This is the fastest method.
+b. **`npx skills search <topic>`** — If the `opencode` or `skills` CLI is available, search the skills registry for a matching skill. Use the goal's key phrases as search terms.
+c. **Web Search** — Use `websearch` to search for skills at:
+   - GitHub topics: `topic:opencode-skill`, `topic:claude-code-skill`, `topic:claude-code-plugin`
+   - Skills registries: `site:opencode.ai/skills`, `site:github.com/topics/opencode-skill`
+   - Direct search: `"opencode skill" <goal-keyword>`, `"claude code skill" <goal-keyword>`
+   - Plugin ecosystems: `"mcp server" <domain>`, `"plugin" <goal-keyword>`
+d. **Website Fetch** — Use `webfetch` to crawl known skill registry pages and marketplace listings for available skills. Fetch raw SKILL.md URLs from GitHub repos when found.
+e. **Temp skill loader** — If a skill is found remotely, use the `temp-skill` skill (when available) to fetch and load it without permanent installation. If temp-skill is not available, use `webfetch` to read the raw SKILL.md and follow its instructions directly.
 
-Marketplace-found skills go in the catalog with source `"marketplace"` and a `url` field.
+Marketplace-found skills go in the catalog with source `"marketplace"`, a `url` field, and a `methods` field documenting how it was found (for future reference).
 
 Build a catalog: `[{"name": "skill-name", "description": "what it does", "path": "path/to/skill", "url": "url", "source": "system|filesystem|marketplace"}, ...]`
 
@@ -164,13 +169,13 @@ Present the inventory concisely:
 
 ```
 Discovery complete:
-  Skills: N total (N system / N filesystem / N marketplace) — list names
+  Skills: N total (N system / N filesystem / N online) — list names
   MCP: N servers (list names and tool counts)
   CLI: list available tools
   Project: language, framework, tooling detected
   Env vars: list set keys (not values), list missing critical ones
   Git: current branch, recent commits
-  Marketplace: on demand (searched when no local skill matches)
+  Online: searched (N skills found in marketplaces/registries)
 ```
 
 Source rules for loading:
@@ -180,7 +185,48 @@ Source rules for loading:
 | `filesystem` | Read `SKILL.md` from `path` |
 | `marketplace` | Use `temp-skill` or `webfetch` the SKILL.md from `url`; fallback to `websearch` for instructions |
 
-When no local skill matches a phase, Step 4 will search the marketplace automatically.
+Online-found skills are already in the catalog ready for Step 4 mapping.
+
+---
+
+### 1f. Online Browser Search (Proactive)
+
+After scanning local tools but before analysis, run a proactive online search for better skills and plugins matching the user's goal. This ensures you don't miss a purpose-built skill that a marketplace or registry offers.
+
+**Use these tools in priority order:**
+
+1. **`websearch`** — Search for skills, plugins, MCP servers, and frameworks matching the goal:
+   ```
+   Search queries (run in parallel):
+   - "opencode skill <goal-keyword>"
+   - "claude code skill <goal-keyword>"
+   - "mcp server <domain/task>"
+   - "plugin for <goal-keyword>"
+   - "npx <package> <goal-keyword>"
+   - site:github.com/topics/opencode-skill
+   - site:github.com/topics/claude-code-skill
+   ```
+2. **`webfetch`** — Fetch raw SKILL.md files from discovered GitHub repos, registry pages, and marketplace listings to read their capabilities.
+3. **`find-skills` skill** — If in `available_skills`, load and use it to search across known marketplaces.
+4. **`npx skills search`** — If the `skills` CLI is detected on the system.
+
+**For each skill/plugin found online:**
+- Extract: name, description, source URL, author
+- Estimate relevance to the user's goal (high / medium / low)
+- Add to catalog: `source: "marketplace", url: <source>, relevance: high|medium|low`
+- If the skill has an install command, also record the install method
+
+**Browser search depth:** Search up to 3 rounds if earlier results reveal new keywords. Stop when searches converge (no new skills found). Budget: ~10 websearch calls max.
+
+**Output after search:**
+
+```
+Online search complete:
+  N new skills discovered (N high relevance)
+  N new plugins/MCP servers discovered
+  Registries searched: opencode marketplace, GitHub topics, web
+  Top finds: {skill-1}, {skill-2}, {skill-3} (high relevance)
+```
 
 ---
 
@@ -263,15 +309,13 @@ For each phase, select the best available skill or tool from the discovered inve
 
 Decision order:
 1. **Installed skill match** — Does a skill from the catalog (system or filesystem) cover this phase? If so, note the skill name for use with the `skill` tool.
-2. **MCP tool match** — Do MCP tools provide needed capability (codegraph for understanding, context7 for docs, playwright for E2E)?
-3. **Marketplace skill search** — No local skill matched. Search for a skill in the marketplace:
-   - Run `npx skills search <phase-keywords>` if the skills CLI is available
-   - Or load the `find-skills` skill if it's in `available_skills`
-   - Or use `websearch` to find a skill (GitHub search: `topic:claude-code-skill <keyword>` or `topic:opencode-skill <keyword>`)
-   - If found, add to catalog with `source: "marketplace"` and use it
+2. **Online-discovered skill match** — Did the proactive browser search (Step 1f) find a marketplace/registry skill matching this phase? The catalog already has `source: "marketplace"` entries ready. Use the best match.
+3. **MCP tool match** — Do MCP tools provide needed capability (codegraph for understanding, context7 for docs, playwright for E2E)?
 4. **Integration/connection match** — Does a configured connection provide the needed capability?
 5. **CLI tool** — Is a CLI tool the right executor (e.g. `pnpm run typecheck`, `git`)?
 6. **Direct execution** — No skill or tool fits; handle with native tools (bash, read/write/edit, grep, glob).
+
+**Marketplace retry (fallback):** If Step 1f's proactive search found nothing, and no local skill matches, do a fresh online search specifically for this phase's keywords (see Step 7 Retry Logic for the full fallback).
 
 **How to load a mapped skill:**
 
@@ -758,14 +802,15 @@ Before the completion report, propose up to 3 high-impact follow-ups (deferred s
 
 1. **Memory Check** — Read MEMORY.md; apply past decisions
 2. **Discovery** — Skills, MCP servers, CLI tools, project context, env vars, git context
-3. **Analysis** — Goal, type, scope, constraints, parallelism opportunities
-4. **Phase Detection** — Ordered phases with dependencies, complexity, criticality
-5. **Skill/Tool Mapping** — Best skill, MCP tool, or CLI tool per phase
-6. **Session Plan** — Write `.local/session_plan.md`; this is the checkpoint file
-7. **Execution** — Sequential or parallel per dependency graph; retry on failure
-8. **Monitoring** — Typecheck + build + tests after each implementation phase
-9. **Final Verification** — Build, runtime, tests, lint, security
-10. **Completion** — Clean up session plan, update memory, report
+3. **Online Browser Search** — Proactive websearch for better skills/plugins in marketplaces and registries
+4. **Analysis** — Goal, type, scope, constraints, parallelism opportunities
+5. **Phase Detection** — Ordered phases with dependencies, complexity, criticality
+6. **Skill/Tool Mapping** — Best skill, MCP tool, or CLI tool per phase (catalog includes online finds)
+7. **Session Plan** — Write `.local/session_plan.md`; this is the checkpoint file
+8. **Execution** — Sequential or parallel per dependency graph; retry on failure
+9. **Monitoring** — Typecheck + build + tests after each implementation phase
+10. **Final Verification** — Build, runtime, tests, lint, security
+11. **Completion** — Clean up session plan, update memory, report
 
 ---
 
