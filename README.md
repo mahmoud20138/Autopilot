@@ -7,7 +7,7 @@
 [![Tests](https://github.com/mahmoud20138/Autopilot/actions/workflows/test.yml/badge.svg)](https://github.com/mahmoud20138/Autopilot/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-> Works with **Claude Code**, **OpenClaude**, **GitHub Copilot CLI**, and **Cursor**.
+> Works with **Claude Code**, **OpenClaude**, **GitHub Copilot CLI**, **Cursor**, and **Kilo**.
 
 ---
 
@@ -18,6 +18,7 @@ Most AI coding assistants stop and ask "should I continue?" between every step. 
 ```
 You:   /autopilot "build a REST API with JWT auth and tests"
 Agent: [discovered 12 skills, 3 MCP servers, 6 CLI tools]
+       [6 phases detected → mapped to 4 skills + codegraph + playwright]
        [planning → implementing → testing → reviewing → shipping]
        Done. All tests pass. Ready to merge.
 ```
@@ -59,6 +60,7 @@ npx autopilot-agent-skill --help    # Show help
 | OpenClaude | ✓ Supported | `~/.openclaude/skills/` |
 | GitHub Copilot | ✓ Supported | `~/.config/github-copilot/skills/` |
 | Cursor | ✓ Supported | `~/.cursor/skills/` |
+| Kilo | ✓ Supported | `~/.config/kilo/skills/` |
 | Custom | ✓ Supported | Any path you specify |
 
 ---
@@ -66,30 +68,35 @@ npx autopilot-agent-skill --help    # Show help
 ## How It Works
 
 ```
-1. Discovery     → Scan for skills, MCP servers, CLI tools
-2. Analysis      → Understand your goal
-3. Phases        → Break goal into logical phases
-4. Skills        → Map each phase to your best installed skill
-5. Execution     → Run phases autonomously
-6. Monitoring    → Check progress, retry failures
-7. Verification  → Build, test, lint before reporting done
+1. Memory Check   → Read MEMORY.md; apply past decisions
+2. Discovery      → Scan skills, MCP servers, CLI tools, project context
+3. Analysis       → Parse goal, identify type/scope/constraints
+4. Phase Detection → Decompose into minimal viable phases
+5. Skill Mapping   → Map each phase to best skill + MCP + CLI
+6. Session Plan    → Write checkpoint file (.local/session_plan.md)
+7. Execution       → Run phases sequentially or in parallel
+8. Monitoring      → Typecheck + build + tests after each phase
+9. Verification    → Final build, test, lint, security checks
+10. Completion     → Clean up, update memory, report
 ```
 
 ---
 
 ## Key Features
 
-- **Smart Discovery** — Automatically finds your skills, MCP servers, and CLI tools
-- **Phase Decomposition** — Breaks any goal into logical phases
-- **Dynamic Skill Mapping** — Routes each phase to your best installed skill
-- **Parallel Execution** — Runs independent phases concurrently
-- **Self-Healing** — Retries failed phases with adjusted prompts
-- **Final Verification** — Builds, tests, and lints before reporting done
+- **Smart Discovery** — Automatically finds your skills, MCP servers, and CLI tools across 5 CLI platforms
+- **Memory-Aware** — Reads past decisions from MEMORY.md before starting
+- **Phase Decomposition** — Breaks any goal into minimal viable phases with dependency tracking
+- **Dynamic Skill Mapping** — Routes each phase to your best installed skill + MCP tools + CLI tools
+- **Prompt Generation** — 6 phase templates (Plan, Implement, Test, Review, Debug, Ship) with customization
+- **Parallel Execution** — Runs independent phases concurrently via background agents
+- **Self-Healing** — Retries failed phases with adjusted prompts; Root Cause Analysis + Incremental Rollback
+- **Context-Aware** — Uses Codegraph MCP for codebase understanding; respects 10-file read limit per turn
+- **Checkpoint/Resume** — Session plan enables resume from interruption
+- **Final Verification** — Builds, tests, lints, and security scans before reporting done
 - **Zero Config** — Works out of the box
 
 ---
-
-## Examples
 
 ### Simple Task
 

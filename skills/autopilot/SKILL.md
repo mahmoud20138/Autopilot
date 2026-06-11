@@ -1,6 +1,6 @@
 ---
 name: autopilot
-description: Autonomous orchestrator that takes a goal, discovers available tools, decomposes into phases, maps phases to skills, executes, and monitors until the project is done. Use when user wants full autonomous execution of a complex goal.
+description: Autonomous orchestrator that takes a goal, discovers available tools and skills, decomposes into phases, maps phases to skills, executes, and monitors until the project is done. Use when the user wants full autonomous execution of a complex goal.
 argument-hint: "The goal to accomplish autonomously"
 ---
 
@@ -10,37 +10,46 @@ Fully autonomous orchestrator. Takes a user's goal, runs it to completion withou
 
 **Announce at start:** "I'm using the Autopilot skill to autonomously accomplish: {user_goal}"
 
-**Core principle:** Never implement anything directly. Orchestrate existing skills. Each phase delegates to a real skill.
+**Core principle:** Orchestrate existing skills and tools — never implement phases from scratch when a skill already covers the task. Each phase delegates to the most appropriate skill or set of tools.
 
-**Portability:** Works on any PC (macOS, Linux, Windows). Dynamically discovers whatever skills, plugins, MCP servers, and CLI tools are installed. No hardcoded skill names.
+**Portability:** Works with Claude Code, OpenClaude, GitHub Copilot CLI, Cursor, and Kilo. Dynamically discovers available skills, MCP servers, integrations, and CLI tools — no hardcoded assumptions.
 
 ## Pipeline
 
 ```
-Input → Discovery → Launch Tracker → Analysis → Phase Detection → Skill Mapping → Prompt Generation → Execution → Monitor → Stop Tracker → Done
+Input → Memory Check → Discovery → Analysis → Phase Detection → Skill/Tool Mapping → Session Plan → Execution → Verification → Completion Report
 ```
 
 ## Stop Conditions
 
 **Stop only when:**
 - All phases completed successfully
-- Final verification passes (build succeeds, tests pass, no blockers)
+- Final verification passes (typecheck, build, runtime check, no blockers)
 - Project goal achieved
 
 **Never stop for:**
-- "Should I continue?" prompts
-- Progress summaries
-- Confirmation between phases
+- "Should I continue?" prompts between phases
+- Progress summaries mid-execution
+- Asking permission to proceed to the next phase
 
 **Pause only if:**
-- Hard blocker that no skill can resolve (missing external dependency, ambiguous requirement)
-- Report the blocker and wait for user input
+- Hard blocker that no skill or tool can resolve (missing external credential, genuinely ambiguous requirement with no safe assumption)
+- Report the blocker precisely and wait for user input
+- Resume from the current phase once the blocker is resolved
 
-## Discovery (Runs First, Every Time)
+---
 
-Before doing anything, build an inventory of what's available on this system.
+## Step 0 — Memory Check (Always First)
 
-### Step 1: Scan Skills Directory
+Before any other work, read `.agents/memory/MEMORY.md` and open any topic files relevant to the current goal. Apply documented constraints and past decisions immediately. If a past decision conflicts with what you observe now, trust the code and update the memory after the task.
+
+---
+
+## Step 1 — Discovery
+
+Build an inventory of everything available on this system. Run discovery once per autopilot session.
+
+### 1a. Scan Skills Directory
 
 Check multiple known skills directories. Use your platform's native file-system tools instead of shell commands for maximum portability:
 
@@ -56,176 +65,122 @@ For each directory that exists, iterate over subdirectories looking for `SKILL.m
 - `name:` field
 - `description:` field
 
-Build a catalog: `[{"name": "skill-name", "description": "what it does"}, ...]`
+Build a catalog: `[{"name": "skill-name", "description": "what it does", "path": "path/to/skill"}, ...]`
 
-### Step 2: Scan MCP Servers
+### 1b. Scan MCP Servers
 
 Check what MCP tools are available by looking at tool names in the system context. Common patterns:
-- `codegraph_*` — CodeGraph server available
-- `mcp__plugin_playwright_*` — Playwright available
-- `mcp__plugin_context7_*` — Context7 available
+- `codegraph_*` — CodeGraph server available (use for codebase understanding, symbol lookup, impact analysis)
+- `mcp__context7__*` — Context7 available (use for library documentation lookup)
+- `mcp__plugin_playwright_*` — Playwright available (use for E2E testing)
 
-### Step 3: Scan CLI Tools
+When Codegraph is available, use it BEFORE writing or editing code:
+- `codegraph_search` — Find symbols by name (faster than grep)
+- `codegraph_context` — Get comprehensive context for a task (composes search + callers + callees)
+- `codegraph_callers` / `codegraph_callees` — Understand dependencies
+- `codegraph_impact` — Analyze blast radius before changing a symbol
+- `codegraph_explore` — Deep dive into unfamiliar modules
 
-Check PATH for common tools. Use your platform's native command to probe each tool:
+### 1c. Scan CLI Tools
+
+Check PATH for common tools relevant to the project:
 
 ```bash
 # macOS / Linux
-for cmd in git node npm python pip pytest cargo go java mvn gradle docker; do
+for cmd in git node npm pnpm python pip pytest cargo go java mvn gradle docker; do
   command -v $cmd && echo "$cmd: available"
 done
 ```
 
 ```powershell
 # Windows
-$tools = 'git','node','npm','python','pip','pytest','cargo','go','java','mvn','gradle','docker'
+$tools = 'git','node','npm','pnpm','python','pip','pytest','cargo','go','java','mvn','gradle','docker'
 foreach ($cmd in $tools) { if (Get-Command $cmd -ErrorAction SilentlyContinue) { Write-Output "$cmd: available" } }
 ```
 
-### Step 4: Scan Project Context
+### 1d. Scan Project Context
 
-Check for project indicators. Use your platform's file-system tooling (Read, Glob, Bash) to probe:
+Detect language/framework indicators and existing artifacts:
 
+```bash
+git status --short
+git log --oneline -5
+```
+
+Check for project indicators:
 - `package.json` → Node.js project
 - `requirements.txt` or `pyproject.toml` → Python project
 - `Cargo.toml` → Rust project
 - `go.mod` → Go project
 - `pom.xml` → Java/Maven project
 - `build.gradle` → Java/Gradle project
-- `jest.config.js` → Jest testing
-- `pytest.ini` or `setup.cfg` → Pytest setup
 - `.github/workflows/` directory → GitHub Actions CI
 
-```bash
-# Git status
-git status --short
-git log --oneline -5
-```
+### 1e. Scan Environment Variables
 
-### Output Format
+Check what env vars are set and what may be missing. Do not display actual values — only list key names and whether they are set.
 
-Present the inventory as:
+### Discovery Output
+
+Present the inventory concisely:
 
 ```
 Discovery complete:
   Skills: N installed (list names)
   MCP: N servers (list names)
-  CLI: list tools
-  Project: language, framework, tooling
+  CLI: list available tools
+  Project: language, framework, tooling detected
+  Env vars: list set keys (not values), list missing critical ones
   Git: current branch, recent commits
 ```
 
-This inventory drives all downstream decisions.
+---
 
-## Launch Tracker (Automatic — No Options)
+## Step 2 — Analysis
 
-**The tracker and dashboard start AUTOMATICALLY. No extra steps. No options. Everything begins when autopilot is called.**
+Parse the goal to understand what needs to be done before decomposing phases.
 
-As soon as Discovery completes, the orchestrator MUST:
+1. **Parse the goal** — What is the user asking for exactly?
+2. **Identify task type** — New feature, bug fix, refactor, full project build, research, maintenance?
+3. **Identify scope** — Single file, multi-file feature, multi-artifact project?
+4. **Identify constraints** — Existing tech stack, env vars needed, external credentials required?
+5. **Identify parallelism opportunities** — Which phases are independent and could run concurrently?
 
-```bash
-# 1. Setup
-mkdir -p .autopilot
-rm -f .autopilot/events.ndjson
-
-# 2. Write initial state
-cat > .autopilot/state.json << 'EOF'
-{
-  "goal": "{user_goal}",
-  "status": "running",
-  "started_at": $(date +%s),
-  "current_phase": 0,
-  "phases": [],
-  "skills_used": {},
-  "mcps_used": {},
-  "clis_used": {},
-  "files_changed": [],
-  "errors": [],
-  "total_duration_s": 0
-}
-EOF
-
-# 3. Emit discovery event
-echo '{"t":"discovery","ts":'$(date +%s)',"data":{...}}' >> .autopilot/events.ndjson
-
-# 4. Start tracker server in background — auto-opens browser (default port 8765)
-python3 tracker/tracker.py &
-```
-
-**That's it.** The dashboard is now live. All subsequent phases stream events automatically.
-
-### Live Event Streaming
-
-Every state change during execution MUST emit an event to `.autopilot/events.ndjson`:
-
-| Action | Event Type | When |
-|--------|-----------|------|
-| Phase starts | `phase_start` | Before executing a phase |
-| Skill invoked | `skill_invoked` | After calling a skill |
-| MCP tool used | `mcp_called` | After MCP tool call |
-| CLI command run | `cli_called` | After CLI command |
-| File changed | `file_changed` | After creating/modifying a file |
-| Phase ends | `phase_end` | After phase completes or fails |
-| Retry | `phase_start` | When retrying a failed phase |
-| Final check | `verification` | After build/test/lint checks |
-| All done | `complete` | After all phases pass |
-
-After each event:
-1. Append the event to `.autopilot/events.ndjson`
-2. Update `.autopilot/state.json` with the new state
-3. The dashboard auto-refreshes via SSE — no manual action needed
-
-## Analysis
-
-After discovery, analyze the user's goal to understand what needs to be done.
-
-### Process
-
-1. **Parse the goal** — What is the user asking for?
-2. **Identify task type** — Is this:
-   - New feature (build something new)
-   - Bug fix (something is broken)
-   - Refactor (improve existing code)
-   - Full project (end-to-end build)
-   - Research (understand something)
-   - Maintenance (update deps, clean up, etc.)
-3. **Identify scope** — How big is this?
-   - Single file change
-   - Multi-file feature
-   - Full project
-4. **Identify constraints** — What limits exist?
-   - Time constraints
-   - Technology constraints
-   - Existing code constraints
-
-### Output
-
-Produce a brief analysis:
+Output:
 
 ```
-Goal: {restated goal}
+Goal: {restated in one sentence}
 Type: {task type}
 Scope: {scope assessment}
-Constraints: {identified constraints}
+Constraints: {identified constraints or "none"}
+Parallelism: {phases that can run in parallel, if any}
 ```
 
-## Phase Detection (LLM-Driven)
+---
 
-Decompose the goal into logical phases using reasoning. No predefined templates — think from first principles.
+## Step 3 — Phase Detection
 
-### Process
+Decompose the goal into the **minimal viable set** of logical phases. Think from first principles — no rigid templates. YAGNI: don't over-decompose.
 
-1. **What needs to happen first?** Usually planning/research/setup
-2. **What depends on what?** Order phases by dependency
-3. **What skills can handle each phase?** Reference discovered inventory
-4. **What's the minimal viable set of phases?** YAGNI — don't over-decompose
+For each phase, determine:
+- **Name** — short descriptive label (e.g. "Set up DB schema", "Implement auth routes")
+- **Goal** — what "done" looks like (verifiable output)
+- **Complexity** — simple / medium / complex
+- **Dependencies** — which prior phases must complete first (drives sequencing and parallelism)
+- **Criticality** — blocking (must pass) or non-blocking (can skip with warning)
 
-### Phase Naming Convention
+**Dynamic sub-phasing:** If a phase is Complex, break it into verifiable sub-tasks before executing it.
 
-Each phase gets:
-- A descriptive name (e.g., "Plan & Design", "Implement Auth", "Write Tests")
-- A clear goal (what "done" looks like for this phase)
-- An estimated complexity (simple/medium/complex)
+**Parallelism rule:** If two phases share no dependency, they are candidates for parallel execution. Plan parallel branches explicitly.
+
+Phase list format:
+
+```
+Phase 1: {name} — {goal} [complexity: simple] [deps: none] [critical]
+Phase 2: {name} — {goal} [complexity: medium] [deps: Phase 1] [critical]
+Phase 3: {name} — {goal} [complexity: simple] [deps: Phase 1] [non-blocking]
+Phase 3+4 (parallel): {name-A} and {name-B} — independent, can run concurrently
+```
 
 ### Example Decompositions
 
@@ -252,30 +207,18 @@ Phase 1: Implement → Goal: endpoint working
 Phase 2: Test → Goal: test passing
 ```
 
-### Output
+---
 
-Produce an ordered phase list:
+## Step 4 — Skill/Tool Mapping
 
-```
-Phase 1: {name} — {goal}
-Phase 2: {name} — {goal}
-Phase 3: {name} — {goal}
-...
-```
+For each phase, select the best available skill or tool from the discovered inventory.
 
-## Skill Mapping
-
-For each detected phase, map it to the best available skill from the discovered inventory.
-
-### Process
-
-For each phase:
-1. **Understand the phase intent** — What does this phase need to accomplish?
-2. **Search discovered skills** — Which skill descriptions match this intent?
-3. **Search MCP tools** — Are there MCP tools that help with this phase?
-4. **Search CLI tools** — Are there CLI tools needed for this phase?
-5. **Select best fit** — Pick the skill/tool that best matches
-6. **Fallback** — If no skill fits, handle directly with LLM reasoning
+Decision order:
+1. **Skill match** — Does a skill from the catalog cover this phase? Load and follow it.
+2. **MCP tool match** — Do MCP tools provide needed capability (codegraph for understanding, context7 for docs, playwright for E2E)?
+3. **Integration/connection match** — Does a configured connection provide the needed capability?
+4. **CLI tool** — Is a CLI tool the right executor (e.g. `pnpm run typecheck`, `git`)?
+5. **Direct execution** — No skill or tool fits; handle with native tools (bash, read/write/edit, grep, glob).
 
 ### Mapping Logic
 
@@ -297,56 +240,99 @@ Match phase intent to skill descriptions:
 
 | Phase Intent | MCP Tools |
 |---|---|
-| Understanding codebase | codegraph_* tools |
-| Testing web UI | playwright tools |
-| Fetching docs | context7 tools |
+| Understanding codebase | `codegraph_search`, `codegraph_context`, `codegraph_explore` |
+| Finding callers/callees | `codegraph_callers`, `codegraph_callees` |
+| Impact analysis | `codegraph_impact` |
+| Fetching library docs | `context7` tools |
+| Testing web UI | `playwright` tools |
 
 ### CLI Tool Mapping
 
 | Phase Intent | CLI Tools |
 |---|---|
 | Version control | git |
-| Package management | npm, pip, cargo, go |
-| Testing | pytest, jest, go test |
-| Building | npm build, cargo build, mvn package |
+| Package management | npm, pnpm, pip, cargo, go |
+| Testing | pytest, jest, go test, cargo test |
+| Building | npm run build, cargo build, mvn package |
 
-### Output
-
-Produce phase-to-skill assignments:
+Produce a mapping table:
 
 ```
-Phase 1: {name} → Skill: {skill_name} + Tools: {tools}
-Phase 2: {name} → Skill: {skill_name} + Tools: {tools}
-Phase 3: {name} → Direct (no matching skill) + Tools: {tools}
+Phase 1: {name} → Skill: {skill_name}, MCP: {tools}, CLI: {tools}
+Phase 2: {name} → Skill: {skill_name}, MCP: {tools}, CLI: {tools}
+Phase 3: {name} → Direct, MCP: {tools}, CLI: {tools}
 ```
 
-### Important Notes
+**Important:** No hardcoded skill names. The mapping is purely based on discovered inventory. Skills are optional — if no skill matches, handle the phase directly.
 
-- **No hardcoded skill names.** The mapping is purely based on discovered inventory.
-- **Skills are optional.** If no skill matches, the agent handles the phase directly.
-- **MCP and CLI tools supplement skills.** A phase might use a skill AND tools together.
-- **Multiple skills per phase is allowed.** If two skills are relevant, use both.
+---
 
-## Prompt Generation (Hybrid)
+## Step 5 — Session Plan
 
-For each phase, generate a tailored prompt using templates + LLM customization.
+Write `.local/session_plan.md` as a checkpoint file before executing anything. This enables resume-from-checkpoint if the session is interrupted.
 
-### Process
+Format:
 
-For each phase:
+```markdown
+# Autopilot Session Plan
+
+## Goal
+{original goal}
+
+## Discovery Summary
+{condensed inventory}
+
+## Tasks
+
+### T001: {Phase 1 name}
+- **Blocked By**: []
+- **Skill**: {skill or Direct}
+- **MCP**: {mcp tools}
+- **CLI**: {cli tools}
+- **Done When**: {verifiable acceptance criterion}
+- **Criticality**: blocking
+- **Status**: pending
+
+### T002: {Phase 2 name}
+- **Blocked By**: [T001]
+- **Skill**: {skill or Direct}
+...
+```
+
+Update status fields (`pending` → `in_progress` → `done` / `failed` / `skipped`) as phases execute. This is the single source of truth for progress.
+
+---
+
+## Step 6 — Execution
+
+Execute each phase in dependency order. Mark phases `in_progress` in the session plan before starting, `done` after success.
+
+### Per-Phase Loop
+
+```
+For each phase (respecting dependency order):
+  1. Update session plan: status → in_progress
+  2. Read the mapped skill's SKILL.md if not already loaded
+  3. Generate prompt (see Prompt Generation below)
+  4. Execute the phase using the mapped skill/tools
+  5. SELF-REVIEW: Does the output meet the phase's "Done When" criterion?
+     - Check for TypeScript errors: pnpm run typecheck
+     - Check for runtime errors: restart workflow, check logs
+     - Check for broken imports: grep for unresolved symbols
+  6. If output is correct: update session plan → done; record key output for next phases
+  7. If output has errors: enter Retry Logic (see below)
+  8. Move to next phase
+```
+
+### Prompt Generation (Hybrid)
+
+For each phase, generate a tailored prompt using templates + LLM customization:
+
 1. **Select the skill** (from mapping)
-2. **Load base template** (see templates below)
-3. **Inject discovery context:**
-   - Project language/framework (from discovery)
-   - Available tools (from discovery)
-   - File paths (from project scan)
-4. **Inject task-specific details:**
-   - What was built in previous phases
-   - Outputs from prior phases (plan file path, test results, etc.)
-   - Constraints from the original input
+2. **Load base template** (see below)
+3. **Inject discovery context** — project language/framework, available tools, file paths
+4. **Inject task-specific details** — prior phase outputs, constraints
 5. **Output final prompt**
-
-### Base Templates
 
 #### Planning Phase Template
 ```markdown
@@ -426,330 +412,9 @@ Prepare for shipping: run final tests, build, create PR or merge.
 Use finishing skills if available.
 ```
 
-### LLM Customization
+### Parallelism Execution
 
-After loading the template, customize it by adding:
-- **Task-specific file paths** — Which files to create/modify
-- **Dependencies from prior phases** — What was built, what tests exist
-- **Edge cases** — Specific to the user's goal
-- **Adjusted instructions** — Based on project state
-
-### Fallback
-
-If no template matches the phase type, generate the prompt from scratch:
-
-```markdown
-You are in the {phase_name} phase.
-
-**Goal:** {phase_goal}
-**Project Context:** {discovery_inventory}
-**Previous Phases:** {prior_results}
-**Original Goal:** {user_goal}
-
-Accomplish the phase goal. Use available tools and skills as needed.
-```
-
-## Execution
-
-Execute each phase sequentially. Never pause for confirmation between phases.
-
-**LIVE TRACKING:** Every action MUST emit an event to `.autopilot/events.ndjson` so the dashboard shows real-time progress.
-
-### Phase Execution Loop
-
-```
-For each phase in order:
-  1. Emit "phase_start" event → dashboard shows phase as in_progress (yellow pulse)
-  2. Mark phase as in_progress (TaskUpdate)
-  3. Generate prompt (from Prompt Generation)
-  4. Invoke the mapped skill with the prompt
-     - If skill exists: Use Skill tool with skill name
-     - If no skill: Execute directly with generated prompt
-     - After skill invocation: emit "skill_invoked" event → dashboard updates skill usage bar
-     - Track MCP/CLI calls during execution
-     - After each file change: emit "file_changed" event → dashboard shows file in list
-  5. Monitor until phase completes (see Monitoring)
-  6. Emit "phase_end" event → dashboard shows phase as completed (green) or failed (red)
-  7. Mark phase as completed (TaskUpdate)
-  8. Record phase output for next phase's context
-  9. Move to next phase
-```
-
-### Event Emission Helper
-
-After each state change, emit an event:
-
-```bash
-# Append directly (cross-platform: works with any shell that supports echo/redirect)
-echo '{"t":"<event_type>","ts":<unix_timestamp>,"data":{...}}' >> .autopilot/events.ndjson
-```
-
-After emitting the event, also update `.autopilot/state.json` so the dashboard has the latest snapshot.
-
-### Skill Invocation
-
-When invoking a skill:
-```
-Skill: {skill_name}
-Args: {generated_prompt_content}
-```
-
-When no skill matches, execute directly:
-- Use the generated prompt as your instruction
-- Use available MCP tools and CLI tools as needed
-- Commit work frequently
-
-### Phase Output Recording
-
-After each phase completes, record:
-- What was accomplished
-- Key file paths created/modified
-- Test results (if applicable)
-- Any issues encountered
-
-This becomes context for the next phase.
-
-## Monitoring
-
-Poll-based status checking during each phase.
-
-### Poll Cycle
-
-Check these indicators periodically:
-
-1. **Task list status**
-   ```
-   TaskList → Check if current phase's tasks are completed
-   ```
-
-2. **Git status**
-   ```bash
-   git status --short
-   git log --oneline -3
-   ```
-
-3. **Test results** (if test framework detected)
-   Run the project's test command directly and review the output:
-   ```bash
-   npm test
-   pytest --tb=short
-   cargo test
-   go test ./...
-   ```
-
-4. **Build output** (if build tool detected)
-   Run the project's build command directly and review the output:
-   ```bash
-   npm run build
-   cargo build
-   python -m compileall src
-   ```
-
-### Phase Completion Criteria
-
-A phase is complete when:
-- All tasks in the phase are marked completed
-- No test failures
-- No build errors
-- Phase goal is achieved
-
-### Phase Failure Handling
-
-```
-If phase fails:
-  1. Analyze failure reason from poll results
-  2. Adjust prompt:
-     - Add more context about the failure
-     - Fix incorrect assumptions
-     - Provide more specific instructions
-  3. Retry same skill (max 2 retries)
-  4. If still failing:
-     - Try alternative skill (max 1 alternative)
-     - If alternative also fails:
-       - Skip phase if non-critical, log warning
-       - Report blocker if critical (testing, verification)
-  5. Continue to next phase
-```
-
-### Retry Prompt Adjustment
-
-When retrying, add to the prompt:
-```markdown
-**PREVIOUS ATTEMPT FAILED:**
-- Error: {error_description}
-- What was tried: {what_was_attempted}
-- Adjusted approach: {new_approach}
-
-Please try again with the adjusted approach.
-```
-
-## Completion
-
-After all phases execute, verify the project is done.
-
-### Stop Tracker
-
-Before generating the completion report, stop the tracker:
-
-1. Set `status: "complete"` in `.autopilot/state.json`
-2. Emit a "complete" event to `.autopilot/events.ndjson`
-3. The dashboard will show the final state
-4. Kill the tracker server process:
-   ```bash
-   kill $(pgrep -f tracker.py) 2>/dev/null || true
-   ```
-
-### Final Verification
-
-Run these checks using your platform's native tools to detect project type:
-
-1. **Build check** — run the project's build command if a build config exists (`package.json`, `Cargo.toml`, `go.mod`, `pom.xml`, `build.gradle`).
-
-2. **Test check** — run the project's test command (`npm test`, `pytest`, `cargo test`, `go test ./...`, etc.).
-
-3. **Lint check** — run a linter if configured (`.eslintrc.js`, `setup.cfg`, `pyproject.toml`, etc.).
-
-4. **Git status**
-   ```bash
-   git status
-   git log --oneline -10
-   ```
-
-### Completion Report
-
-If all checks pass, report:
-
-```
-AUTOPILOT COMPLETE
-
-Goal: {original_goal}
-Phases Completed: {phase_count}
-
-Summary:
-- {phase_1}: {result}
-- {phase_2}: {result}
-- {phase_3}: {result}
-
-Verification:
-- Build: PASS
-- Tests: PASS
-- Lint: PASS (or N/A)
-
-All done! Project goal achieved.
-```
-
-### If Verification Fails
-
-If any check fails:
-1. Add a new phase to fix the issue
-2. Execute the fix phase
-3. Re-run verification
-4. Repeat until all checks pass
-
-Never report completion with failing checks.
-
-## Main Orchestrator Flow
-
-This is the complete flow that ties everything together.
-
-### Step-by-Step Execution
-
-```
-1. RECEIVE INPUT
-   - Read user's goal from argument-hint
-   - Announce: "I'm using the Autopilot skill to autonomously accomplish: {goal}"
-
-2. RUN DISCOVERY
-   - Scan skills directory → build skill catalog
-   - Scan MCP servers → note available tools
-   - Scan CLI tools → note available commands
-   - Scan project context → detect language/framework/tooling
-   - Present inventory summary
-
-3. LAUNCH TRACKER (AUTOMATIC)
-   - mkdir -p .autopilot && rm -f .autopilot/events.ndjson
-   - Write initial state.json
-   - Emit discovery event
-   - Run: python3 tracker/tracker.py &
-   - Dashboard auto-opens in browser (tracker.py handles this)
-   - All subsequent phases stream live to dashboard automatically
-
-4. RUN ANALYSIS
-   - Parse goal
-   - Identify task type (feature/fix/refactor/project/research/maintenance)
-   - Identify scope (single-file/multi-file/full-project)
-   - Identify constraints
-   - Present analysis summary
-   - Emit analysis event → dashboard updates live
-
-5. DETECT PHASES
-   - Decompose goal into ordered phases
-   - Each phase: name + goal + complexity
-   - Present phase plan
-   - Emit phase detection event → dashboard shows phase pipeline
-
-6. MAP SKILLS
-   - For each phase: match to discovered skill
-   - Map MCP tools and CLI tools per phase
-   - Present skill assignments
-
-7. CREATE TASKS
-   - TaskCreate for each phase
-   - Set up dependencies (each phase blocks the next)
-   - Present task list
-
-8. EXECUTE PHASES (LIVE TRACKING)
-   - For each phase (in order):
-     a. Emit phase_start event → dashboard shows phase as in_progress (yellow)
-     b. TaskUpdate: mark in_progress
-     c. Generate prompt (template + customization)
-     d. Invoke skill or execute directly
-        - After skill invocation: emit skill_invoked event → dashboard updates skill bar
-        - Track MCP/CLI calls during execution
-        - After each file change: emit file_changed event → dashboard shows file
-     e. Monitor until complete
-     f. Emit phase_end event → dashboard shows phase as completed (green)
-     g. TaskUpdate: mark completed
-     h. Record output for next phase
-
-9. FINAL VERIFICATION
-   - Emit verification event → dashboard shows build/test/lint status
-   - Run build check
-   - Run test check
-   - Run lint check
-   - Check git status
-
-10. STOP TRACKER & REPORT COMPLETION
-    - Set status to "complete" in state.json
-    - Emit complete event → dashboard shows final summary
-    - Stop tracker server
-    - Present completion summary
-    - List all phases and results
-    - Confirm project goal achieved
-```
-
-### Error Recovery
-
-At any point if a hard blocker is encountered:
-1. Stop execution
-2. Report the blocker clearly
-3. Explain what was tried
-4. Wait for user input
-
-Resume from where it stopped once the blocker is resolved.
-
-## Parallel Execution
-
-When phases are independent, execute them concurrently to save time.
-
-### Identifying Parallel Phases
-
-Two phases can run in parallel if:
-- Neither depends on the other's output
-- They don't modify the same files
-- They don't share state (e.g., both writing to the same test file)
-
-### Parallel Execution Pattern
+For phases with no shared dependencies, launch them concurrently using the Agent tool:
 
 ```
 Phase 1: Plan & Design → blocks Phase 2, 3
@@ -759,102 +424,220 @@ Phase 4: Write Tests → blocks Phase 5
 Phase 5: Review & Ship
 ```
 
-### How to Execute in Parallel
-
 When phases are independent:
 1. Create tasks for all parallel phases
-2. Use your platform's background execution capability (e.g., `run_in_background` if available, or Task tool with subagents)
+2. Use the Agent tool with `run_in_background: true` for concurrent execution
 3. Monitor all background agents
 4. Wait for all to complete before starting dependent phases
 
-### When NOT to Parallelize
-
+**When NOT to parallelize:**
 - When phases share files or state
 - When one phase's output is another's input
 - When the project is small enough that parallelism adds overhead
 - When debugging (sequential is better for tracing issues)
 
-## Progress Reporting
+### Context Budget Rule
 
-Report progress at natural milestones, not after every action.
+Each file read consumes context. Never read more than 10 files in a single phase. If you need broad codebase understanding:
+- Use `codegraph_context` or `codegraph_explore` (when Codegraph MCP is available)
+- Use the `Explore` subagent for broad searches
+- Use grep and glob to locate files before reading — never speculatively read files you may not need
 
-### When to Report
+### Progress Cadence
 
-- After each phase completes
-- After a significant milestone within a phase (e.g., "auth module done")
-- When encountering a blocker
-- Before starting a complex phase
+In long runs, emit a one-line progress note at each phase boundary:
+```
+Phase 3/7 complete — auth routes live, moving to billing
+```
+Do not pause for acknowledgement. Keep notes to a single sentence; never dump full summaries mid-run.
 
-### Progress Format
+---
+
+## Step 7 — Retry Logic
 
 ```
-Progress: Phase 2/5 — Implement Auth
-  ✓ Phase 1: Plan & Design (complete)
-  → Phase 2: Implement Auth (in progress — JWT middleware done, routes pending)
-  ○ Phase 3: Write Tests
-  ○ Phase 4: Review
-  ○ Phase 5: Ship
+If a phase fails:
+  1. Read the error precisely (from bash output, logs, or typecheck output).
+  2. Identify root cause: wrong assumption, missing dependency, env var, type error, import error?
+  3. Fix the specific issue and re-run the phase (attempt 1 of 2).
+
+  If still failing after retry 1:
+  4. Search for a more specific skill matching the phase topic + error keyword.
+  5. If a better skill is found: load it and retry (attempt 2 of 2).
+  6. If no better skill found: try one alternative approach (different library, simpler implementation).
+
+  If still failing after attempt 2:
+  7. For non-blocking phase: log a warning in the session plan, set status → skipped, continue.
+  8. For blocking phase: stop execution, report the blocker clearly (what was tried, what failed, what's needed), wait for user input.
 ```
 
-### What NOT to Report
+### Enhanced Error Recovery Patterns
 
-- Every file read or write
-- Every command executed
-- Intermediate debugging steps
-- Routine task updates
-
-## Enhanced Error Recovery
-
-Beyond basic retry, use these patterns for robust error handling.
-
-### Pattern 1: Root Cause Analysis
-
-When a phase fails:
+**Root Cause Analysis:**
 1. Read the error message carefully
 2. Check if it's a known issue (search error text)
-3. Identify if it's:
+3. Identify the error type:
    - **Configuration error** — wrong paths, missing env vars
    - **Dependency error** — missing package, version mismatch
    - **Logic error** — code bug, incorrect assumption
    - **Environment error** — OS-specific, permission issue
 
-### Pattern 2: Incremental Rollback
-
+**Incremental Rollback:**
 If a phase partially succeeds then fails:
 1. Identify what was completed successfully
 2. Identify what failed
 3. Only retry the failed part, not the entire phase
 
-### Pattern 3: Alternative Approaches
-
-When the primary approach fails:
-1. Try the simplest fix first
-2. If that fails, try a different library/tool
-3. If that fails, simplify the requirement
-4. If still failing, report as a blocker
-
-### Pattern 4: Graceful Degradation
-
-For non-critical features:
+**Graceful Degradation (for non-critical features):**
 1. If implementation is too complex, simplify
 2. If a dependency is unavailable, find alternatives
 3. If a feature can't be fully implemented, implement a subset
 4. Document what was simplified and why
 
-### Error Recovery Decision Tree
+Never silently swallow errors. Always log failure reason in the session plan.
+
+---
+
+## Step 8 — Monitoring & Quality
+
+After each implementation phase, run the relevant quality checks before marking done.
+
+| Project Type | Typecheck Command | Build Command |
+|---|---|---|
+| Node/TS (pnpm workspace) | `pnpm run typecheck` | `pnpm --filter @workspace/<slug> run build` |
+| Node/TS (npm) | `npx tsc --noEmit` | `npm run build` |
+| Python | `python -m mypy .` or `pyright` if available | n/a |
+| Rust | `cargo check` | `cargo build` |
+| Go | `go vet ./...` | `go build ./...` |
+| Other | Detect from `package.json` / CI config | Detect from project |
+
+**Linting (when configured):** Run `pnpm exec eslint src/` or `flake8` if a lint config exists. Non-blocking unless the project's `package.json` marks lint as a required check.
+
+**Security (when relevant):** Run a security scan for any phase that introduces authentication, payments, or data storage. Check for hardcoded secrets, SQL injection, XSS vulnerabilities.
+
+---
+
+## Step 9 — Final Verification
+
+After all phases complete, run a comprehensive check.
+
+### Checks (adapt to project type)
+
+1. **Typecheck** — Must exit 0 (TS/JS projects)
+2. **Build** — Must exit 0
+3. **Tests** — All tests must pass
+4. **Lint** — Must pass if lint config exists
+5. **Git status** — Confirm no unintended unstaged files
+6. **Security scan** — No hardcoded secrets or obvious vulnerabilities
+
+### If Any Check Fails
+
+1. Diagnose the failure from logs / typecheck output.
+2. Add a new ad-hoc `Fix` phase to the session plan.
+3. Execute the fix.
+4. Re-run verification.
+5. Repeat until all checks pass.
+
+Never report completion with failing checks.
+
+---
+
+## Step 10 — Completion Report
+
+When all checks pass, present results and clean up.
+
+**Cleanup:**
+- Delete `.local/session_plan.md` (task complete, no longer needed)
+- Update `.agents/memory/MEMORY.md` with any durable lessons, non-obvious decisions, or environment quirks discovered during execution (follow memory system rules — no secrets, no implementation changelogs, no derivable-from-code content)
+
+**Report:**
 
 ```
-Phase fails
-├── Is it a quick fix? (< 5 min)
-│   └── Yes → Fix and retry
-├── Is it a dependency issue?
-│   └── Yes → Install/find alternative
-├── Is it a logic error?
-│   └── Yes → Debug, fix, retry
-├── Is it an environment issue?
-│   └── Yes → Check OS/permissions, adapt
-└── None of the above?
-    └── Try alternative skill/approach
-        └── Still failing?
-            └── Report blocker (if critical) or skip (if non-critical)
+AUTOPILOT COMPLETE
+
+Goal: {original goal}
+Phases: {N completed} / {N total}
+
+Summary:
+- {Phase 1}: {result one-liner}
+- {Phase 2}: {result one-liner}
+...
+
+Verification:
+- Typecheck: PASS
+- Build: PASS
+- Tests: PASS
+- Lint: PASS / SKIPPED (no config found)
+- Security: PASS / SKIPPED (not applicable)
+
+Goal achieved.
 ```
+
+---
+
+## Optional Modes & Extensions
+
+These are opt-in behaviors the user can request, or that autopilot can enable based on the goal. They are off by default unless the goal or risk profile warrants them.
+
+### Dry-Run / Plan-Only Mode
+
+When the user says "plan it", "show me the plan first", or "don't execute yet", run Steps 0–5 only. Write `.local/session_plan.md`, present the phase list and skill mapping, then stop and wait for approval. Do not execute any phase.
+
+### Approval Gates (Destructive Actions)
+
+For any phase that performs a destructive or far-reaching action, pause and confirm with the user before executing — even in full autonomous mode. Destructive actions include:
+- Schema migrations that drop/alter columns, or any data deletion
+- Dropping a database, truncating tables, or bulk updates
+- Broad refactors touching many files or shared contracts (API/schema)
+- Swapping a major library or framework
+- Any write/update/delete against a connected integration
+
+Read-only phases never require a gate.
+
+### Code Review at Milestones
+
+At each major milestone or phase-boundary (not every phase), invoke a code review agent to validate the trajectory before continuing. Use the `code-reviewer` or `security-reviewer` agents as appropriate.
+
+### End-to-End Testing
+
+For phases that ship user-facing flows, use the `e2e-runner` agent with Playwright to test against the running app. Lean toward testing large or complex changes; skip it for trivial ones. E2E tests catch bugs that typecheck and curl cannot.
+
+### Resume from Checkpoint
+
+If a session is interrupted, autopilot resumes by reading `.local/session_plan.md`: skip phases marked `done`, re-run the one marked `in_progress`, then continue. The session plan is the single source of truth for progress — never restart from Phase 1 if a plan already exists.
+
+### Output Manifest
+
+For multi-artifact or file-generating goals, maintain a running manifest in the session plan of every artifact created (slug + preview path) and every standalone file produced (path + purpose). Surface this manifest in the completion report so the user knows exactly what was delivered and where.
+
+### Follow-Up Tasks
+
+Before the completion report, propose up to 3 high-impact follow-ups (deferred scope, next steps, tech debt). Skip trivial items and anything already in scope.
+
+---
+
+## Main Orchestrator Flow (Summary)
+
+1. **Memory Check** — Read MEMORY.md; apply past decisions
+2. **Discovery** — Skills, MCP servers, CLI tools, project context, env vars, git context
+3. **Analysis** — Goal, type, scope, constraints, parallelism opportunities
+4. **Phase Detection** — Ordered phases with dependencies, complexity, criticality
+5. **Skill/Tool Mapping** — Best skill, MCP tool, or CLI tool per phase
+6. **Session Plan** — Write `.local/session_plan.md`; this is the checkpoint file
+7. **Execution** — Sequential or parallel per dependency graph; retry on failure
+8. **Monitoring** — Typecheck + build + tests after each implementation phase
+9. **Final Verification** — Build, runtime, tests, lint, security
+10. **Completion** — Clean up session plan, update memory, report
+
+---
+
+## Hard Rules
+
+- **Never implement from scratch** what an existing skill already covers — read and follow the skill.
+- **Never skip verification** — no phase is "done" until its acceptance criterion is confirmed.
+- **Never report completion with failing checks** — fix first, report after.
+- **Never read more than 10 files per turn** — use `codegraph_context` or `Explore` subagent for broad analysis.
+- **Never expose secrets** — env vars, tokens, and credentials must never appear in output or memory.
+- **Never use `console.log` in server code** — use proper logging libraries.
+- **Never hardcode ports** — always read from `process.env.PORT`.
+- **Never hardcode skill names** — always discover from the current system's inventory.
