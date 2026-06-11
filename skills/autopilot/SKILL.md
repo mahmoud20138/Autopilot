@@ -41,6 +41,7 @@ Input → Memory Check → Discovery → Analysis → Phase Detection → Skill/
 
 ## Step 0 — Memory Check (Always First)
 
+<<<<<<< HEAD
 Before any other work, read `.agents/memory/MEMORY.md` and open any topic files relevant to the current goal. Apply documented constraints and past decisions immediately. If a past decision conflicts with what you observe now, trust the code and update the memory after the task.
 
 ---
@@ -50,8 +51,17 @@ Before any other work, read `.agents/memory/MEMORY.md` and open any topic files 
 Build an inventory of everything available on this system. Run discovery once per autopilot session.
 
 ### 1a. Scan Skills Directory
+=======
+### Step 1: Scan Skills Sources
+>>>>>>> f02627f (fix: autopilot now discovers skills from system prompt available_skills and uses the skill tool to load them)
 
-Check multiple known skills directories. Use your platform's native file-system tools instead of shell commands for maximum portability:
+Skills can be loaded at runtime via the `skill` tool, which matches against the `available_skills` list in the system prompt. Discover skills from BOTH sources:
+
+**Source A — System Prompt `available_skills`:**
+Scan the system context for the `<available_skills>` block. Each skill entry has a `name` and `description`. These are loadable via the `skill` tool by name. Add them to the catalog with source `"system"`.
+
+**Source B — Skills Directory:**
+Check multiple known skills directories:
 
 | CLI | Skills Directory |
 |-----|----------------|
@@ -65,7 +75,11 @@ For each directory that exists, iterate over subdirectories looking for `SKILL.m
 - `name:` field
 - `description:` field
 
+<<<<<<< HEAD
 Build a catalog: `[{"name": "skill-name", "description": "what it does", "path": "path/to/skill"}, ...]`
+=======
+Build a catalog: `[{"name": "skill-name", "description": "what it does", "source": "system"}, ...]`
+>>>>>>> f02627f (fix: autopilot now discovers skills from system prompt available_skills and uses the skill tool to load them)
 
 ### 1b. Scan MCP Servers
 
@@ -126,7 +140,7 @@ Present the inventory concisely:
 
 ```
 Discovery complete:
-  Skills: N installed (list names)
+  Skills: N available (N system / N filesystem) — list names
   MCP: N servers (list names)
   CLI: list available tools
   Project: language, framework, tooling detected
@@ -134,7 +148,13 @@ Discovery complete:
   Git: current branch, recent commits
 ```
 
+<<<<<<< HEAD
 ---
+=======
+Note the source (`system` or `filesystem`) for each skill — use the `skill` tool for system-prompt skills; read SKILL.md directly for filesystem-only skills.
+
+This inventory drives all downstream decisions.
+>>>>>>> f02627f (fix: autopilot now discovers skills from system prompt available_skills and uses the skill tool to load them)
 
 ## Step 2 — Analysis
 
@@ -267,7 +287,19 @@ Phase 3: {name} → Direct, MCP: {tools}, CLI: {tools}
 
 ---
 
+<<<<<<< HEAD
 ## Step 5 — Session Plan
+=======
+### How to Load Mapped Skills
+
+When executing a phase with a mapped skill:
+
+1. **System-prompt skills** — Use the `skill` tool with `name: <skill-name>` to load the skill's instructions into context. This works for skills found in the system prompt's `available_skills` list.
+2. **Filesystem-only skills** — Read the skill's `SKILL.md` file directly from the discovered path.
+3. **Avoid re-loading** — Do not re-load a skill already loaded in this session.
+
+## Prompt Generation (Hybrid)
+>>>>>>> f02627f (fix: autopilot now discovers skills from system prompt available_skills and uses the skill tool to load them)
 
 Write `.local/session_plan.md` as a checkpoint file before executing anything. This enables resume-from-checkpoint if the session is interrupted.
 
@@ -414,7 +446,336 @@ Use finishing skills if available.
 
 ### Parallelism Execution
 
+<<<<<<< HEAD
 For phases with no shared dependencies, launch them concurrently using the Agent tool:
+=======
+After loading the template, customize it by adding:
+- **Task-specific file paths** — Which files to create/modify
+- **Dependencies from prior phases** — What was built, what tests exist
+- **Edge cases** — Specific to the user's goal
+- **Adjusted instructions** — Based on project state
+
+### Fallback
+
+If no template matches the phase type, generate the prompt from scratch:
+
+```markdown
+You are in the {phase_name} phase.
+
+**Goal:** {phase_goal}
+**Project Context:** {discovery_inventory}
+**Previous Phases:** {prior_results}
+**Original Goal:** {user_goal}
+
+Accomplish the phase goal. Use available tools and skills as needed.
+```
+
+## Execution
+
+Execute each phase sequentially. Never pause for confirmation between phases.
+
+**LIVE TRACKING:** Every action MUST emit an event to `.autopilot/events.ndjson` so the dashboard shows real-time progress.
+
+### Phase Execution Loop
+
+```
+For each phase in order:
+  1. Emit "phase_start" event → dashboard shows phase as in_progress (yellow pulse)
+  2. Mark phase as in_progress (TaskUpdate)
+  3. Generate prompt (from Prompt Generation)
+  4. Invoke the mapped skill with the prompt
+     - If skill exists: Use Skill tool with skill name
+     - If no skill: Execute directly with generated prompt
+     - After skill invocation: emit "skill_invoked" event → dashboard updates skill usage bar
+     - Track MCP/CLI calls during execution
+     - After each file change: emit "file_changed" event → dashboard shows file in list
+  5. Monitor until phase completes (see Monitoring)
+  6. Emit "phase_end" event → dashboard shows phase as completed (green) or failed (red)
+  7. Mark phase as completed (TaskUpdate)
+  8. Record phase output for next phase's context
+  9. Move to next phase
+```
+
+### Event Emission Helper
+
+After each state change, emit an event:
+
+```bash
+# Append directly (cross-platform: works with any shell that supports echo/redirect)
+echo '{"t":"<event_type>","ts":<unix_timestamp>,"data":{...}}' >> .autopilot/events.ndjson
+```
+
+After emitting the event, also update `.autopilot/state.json` so the dashboard has the latest snapshot.
+
+### Skill Invocation
+
+When invoking a skill:
+1. Load the skill via the `skill` tool: `skill name: <skill-name>` (system-prompt skills) or read SKILL.md directly (filesystem-only skills)
+2. Generate the phase prompt (see Prompt Generation)
+3. Execute with the skill loaded in context:
+```
+Skill: {skill_name}
+Args: {generated_prompt_content}
+```
+
+When no skill matches, execute directly:
+- Use the generated prompt as your instruction
+- Use available MCP tools and CLI tools as needed
+- Commit work frequently
+
+### Phase Output Recording
+
+After each phase completes, record:
+- What was accomplished
+- Key file paths created/modified
+- Test results (if applicable)
+- Any issues encountered
+
+This becomes context for the next phase.
+
+## Monitoring
+
+Poll-based status checking during each phase.
+
+### Poll Cycle
+
+Check these indicators periodically:
+
+1. **Task list status**
+   ```
+   TaskList → Check if current phase's tasks are completed
+   ```
+
+2. **Git status**
+   ```bash
+   git status --short
+   git log --oneline -3
+   ```
+
+3. **Test results** (if test framework detected)
+   Run the project's test command directly and review the output:
+   ```bash
+   npm test
+   pytest --tb=short
+   cargo test
+   go test ./...
+   ```
+
+4. **Build output** (if build tool detected)
+   Run the project's build command directly and review the output:
+   ```bash
+   npm run build
+   cargo build
+   python -m compileall src
+   ```
+
+### Phase Completion Criteria
+
+A phase is complete when:
+- All tasks in the phase are marked completed
+- No test failures
+- No build errors
+- Phase goal is achieved
+
+### Phase Failure Handling
+
+```
+If phase fails:
+  1. Analyze failure reason from poll results
+  2. Adjust prompt:
+     - Add more context about the failure
+     - Fix incorrect assumptions
+     - Provide more specific instructions
+  3. Retry same skill via the `skill` tool (max 2 retries)
+  4. If still failing:
+     - Search for a more specific skill matching the phase topic + error keyword
+     - Load alternative skill via the `skill` tool (max 1 alternative)
+     - If alternative also fails:
+       - Skip phase if non-critical, log warning
+       - Report blocker if critical (testing, verification)
+  5. Continue to next phase
+```
+
+### Retry Prompt Adjustment
+
+When retrying, add to the prompt:
+```markdown
+**PREVIOUS ATTEMPT FAILED:**
+- Error: {error_description}
+- What was tried: {what_was_attempted}
+- Adjusted approach: {new_approach}
+
+Please try again with the adjusted approach.
+```
+
+## Completion
+
+After all phases execute, verify the project is done.
+
+### Stop Tracker
+
+Before generating the completion report, stop the tracker:
+
+1. Set `status: "complete"` in `.autopilot/state.json`
+2. Emit a "complete" event to `.autopilot/events.ndjson`
+3. The dashboard will show the final state
+4. Kill the tracker server process:
+   ```bash
+   kill $(pgrep -f tracker.py) 2>/dev/null || true
+   ```
+
+### Final Verification
+
+Run these checks using your platform's native tools to detect project type:
+
+1. **Build check** — run the project's build command if a build config exists (`package.json`, `Cargo.toml`, `go.mod`, `pom.xml`, `build.gradle`).
+
+2. **Test check** — run the project's test command (`npm test`, `pytest`, `cargo test`, `go test ./...`, etc.).
+
+3. **Lint check** — run a linter if configured (`.eslintrc.js`, `setup.cfg`, `pyproject.toml`, etc.).
+
+4. **Git status**
+   ```bash
+   git status
+   git log --oneline -10
+   ```
+
+### Completion Report
+
+If all checks pass, report:
+
+```
+AUTOPILOT COMPLETE
+
+Goal: {original_goal}
+Phases Completed: {phase_count}
+
+Summary:
+- {phase_1}: {result}
+- {phase_2}: {result}
+- {phase_3}: {result}
+
+Verification:
+- Build: PASS
+- Tests: PASS
+- Lint: PASS (or N/A)
+
+All done! Project goal achieved.
+```
+
+### If Verification Fails
+
+If any check fails:
+1. Add a new phase to fix the issue
+2. Execute the fix phase
+3. Re-run verification
+4. Repeat until all checks pass
+
+Never report completion with failing checks.
+
+## Main Orchestrator Flow
+
+This is the complete flow that ties everything together.
+
+### Step-by-Step Execution
+
+```
+1. RECEIVE INPUT
+   - Read user's goal from argument-hint
+   - Announce: "I'm using the Autopilot skill to autonomously accomplish: {goal}"
+
+2. RUN DISCOVERY
+   - Scan skills directory → build skill catalog
+   - Scan MCP servers → note available tools
+   - Scan CLI tools → note available commands
+   - Scan project context → detect language/framework/tooling
+   - Present inventory summary
+
+3. LAUNCH TRACKER (AUTOMATIC)
+   - mkdir -p .autopilot && rm -f .autopilot/events.ndjson
+   - Write initial state.json
+   - Emit discovery event
+   - Run: python3 tracker/tracker.py &
+   - Dashboard auto-opens in browser (tracker.py handles this)
+   - All subsequent phases stream live to dashboard automatically
+
+4. RUN ANALYSIS
+   - Parse goal
+   - Identify task type (feature/fix/refactor/project/research/maintenance)
+   - Identify scope (single-file/multi-file/full-project)
+   - Identify constraints
+   - Present analysis summary
+   - Emit analysis event → dashboard updates live
+
+5. DETECT PHASES
+   - Decompose goal into ordered phases
+   - Each phase: name + goal + complexity
+   - Present phase plan
+   - Emit phase detection event → dashboard shows phase pipeline
+
+6. MAP SKILLS
+   - For each phase: match to discovered skill
+   - Map MCP tools and CLI tools per phase
+   - Present skill assignments
+
+7. CREATE TASKS
+   - TaskCreate for each phase
+   - Set up dependencies (each phase blocks the next)
+   - Present task list
+
+8. EXECUTE PHASES (LIVE TRACKING)
+   - For each phase (in order):
+     a. Emit phase_start event → dashboard shows phase as in_progress (yellow)
+     b. TaskUpdate: mark in_progress
+     c. Generate prompt (template + customization)
+     d. Invoke skill or execute directly
+        - After skill invocation: emit skill_invoked event → dashboard updates skill bar
+        - Track MCP/CLI calls during execution
+        - After each file change: emit file_changed event → dashboard shows file
+     e. Monitor until complete
+     f. Emit phase_end event → dashboard shows phase as completed (green)
+     g. TaskUpdate: mark completed
+     h. Record output for next phase
+
+9. FINAL VERIFICATION
+   - Emit verification event → dashboard shows build/test/lint status
+   - Run build check
+   - Run test check
+   - Run lint check
+   - Check git status
+
+10. STOP TRACKER & REPORT COMPLETION
+    - Set status to "complete" in state.json
+    - Emit complete event → dashboard shows final summary
+    - Stop tracker server
+    - Present completion summary
+    - List all phases and results
+    - Confirm project goal achieved
+```
+
+### Error Recovery
+
+At any point if a hard blocker is encountered:
+1. Stop execution
+2. Report the blocker clearly
+3. Explain what was tried
+4. Wait for user input
+
+Resume from where it stopped once the blocker is resolved.
+
+## Parallel Execution
+
+When phases are independent, execute them concurrently to save time.
+
+### Identifying Parallel Phases
+
+Two phases can run in parallel if:
+- Neither depends on the other's output
+- They don't modify the same files
+- They don't share state (e.g., both writing to the same test file)
+
+### Parallel Execution Pattern
+>>>>>>> f02627f (fix: autopilot now discovers skills from system prompt available_skills and uses the skill tool to load them)
 
 ```
 Phase 1: Plan & Design → blocks Phase 2, 3
