@@ -51,7 +51,7 @@ Build an inventory of everything available on this system. Run discovery once pe
 
 ### 1a. Scan Skills Sources
 
-Skills can be loaded at runtime via the `skill` tool, which matches against the `available_skills` list in the system prompt. Discover skills from BOTH sources:
+Skills can be loaded at runtime via the `skill` tool, which matches against the `available_skills` list in the system prompt. Discover skills from ALL sources:
 
 **Source 1 — System Prompt `available_skills`:**
 Scan the system context for the `<available_skills>` block. Each skill entry has a `name` and `description`. These are loadable via the `skill` tool by name. Add them to the catalog with source `"system"`.
@@ -71,14 +71,39 @@ For each directory that exists, iterate over subdirectories looking for `SKILL.m
 - `name:` field
 - `description:` field
 
-Build a catalog: `[{"name": "skill-name", "description": "what it does", "path": "path/to/skill", "source": "system"}, ...]`
+**Source 3 — Marketplace / Remote Registry:**
+When no local skill matches a phase, search for marketplace skills. Use these methods in order:
+
+a. **`npx skills search <topic>`** — If the `opencode` or `skills` CLI is available, search the skills registry for a matching skill.
+b. **Web search** — Use `websearch` or `webfetch` to search for skills at known registries (GitHub topic `opencode-skill`, `claude-code-skill`, etc.).
+c. **Temp skill loader** — If a skill is found remotely, use the `temp-skill` skill (when available) to fetch and load it without permanent installation.
+
+Marketplace-found skills go in the catalog with source `"marketplace"` and a `url` field.
+
+Build a catalog: `[{"name": "skill-name", "description": "what it does", "path": "path/to/skill", "url": "url", "source": "system|filesystem|marketplace"}, ...]`
 
 ### 1b. Scan MCP Servers
 
-Check what MCP tools are available by looking at tool names in the system context. Common patterns:
-- `codegraph_*` — CodeGraph server available (use for codebase understanding, symbol lookup, impact analysis)
-- `mcp__context7__*` — Context7 available (use for library documentation lookup)
-- `mcp__plugin_playwright_*` — Playwright available (use for E2E testing)
+Check what MCP tools are available by looking at tool names in the system context. Also scan MCP configuration files:
+
+**Pattern matching** — Look for known MCP tool prefixes:
+| Prefix | Server | Use Case |
+|--------|--------|----------|
+| `codegraph_*` | CodeGraph | Codebase understanding, symbol lookup, impact analysis |
+| `mcp__context7__*` | Context7 | Library documentation lookup |
+| `mcp__plugin_playwright_*` | Playwright | E2E browser testing |
+| `mcp__fal_*` | fal.ai | Image/video/audio generation |
+| `mcp__exa_*` | Exa | Web search and research |
+| `mcp__github_*` | GitHub | PR, issues, repo management |
+| `mcp__*` | Any MCP | General-purpose server tools |
+
+**Config file scan** — Check common MCP config locations for installed servers:
+- `~/.config/opencode/mcp.json` or `opencode.json`
+- `~/.codex/mcp.json`
+- `.mcp.json` in project root
+- `claude_desktop_config.json`
+
+For each discovered MCP server, note its capabilities and add to the catalog as `{"type": "mcp", "name": "server-name", "tools": ["tool1", "tool2"]}`.
 
 When Codegraph is available, use it BEFORE writing or editing code:
 - `codegraph_search` — Find symbols by name (faster than grep)
@@ -132,15 +157,23 @@ Present the inventory concisely:
 
 ```
 Discovery complete:
-  Skills: N available (N system / N filesystem) — list names
-  MCP: N servers (list names)
+  Skills: N total (N system / N filesystem / N marketplace) — list names
+  MCP: N servers (list names and tool counts)
   CLI: list available tools
   Project: language, framework, tooling detected
   Env vars: list set keys (not values), list missing critical ones
   Git: current branch, recent commits
+  Marketplace: reachable (npx skills / web search)
 ```
 
-Note the source (`system` or `filesystem`) for each skill — use the `skill` tool for system-prompt skills; read SKILL.md directly for filesystem-only skills.
+Source rules for loading:
+| Source | Load Method |
+|--------|------------|
+| `system` | Use `skill name: <skill-name>` |
+| `filesystem` | Read `SKILL.md` from `path` |
+| `marketplace` | Use `temp-skill` or `webfetch` the SKILL.md from `url`; fallback to `websearch` for instructions |
+
+When no local skill matches a phase, Step 4 will search the marketplace automatically.
 
 ---
 
@@ -222,13 +255,23 @@ Phase 2: Test → Goal: test passing
 For each phase, select the best available skill or tool from the discovered inventory.
 
 Decision order:
-1. **Skill match** — Does a skill from the catalog cover this phase? If so, note the skill name for use with the `skill` tool.
+1. **Installed skill match** — Does a skill from the catalog (system or filesystem) cover this phase? If so, note the skill name for use with the `skill` tool.
 2. **MCP tool match** — Do MCP tools provide needed capability (codegraph for understanding, context7 for docs, playwright for E2E)?
-3. **Integration/connection match** — Does a configured connection provide the needed capability?
-4. **CLI tool** — Is a CLI tool the right executor (e.g. `pnpm run typecheck`, `git`)?
-5. **Direct execution** — No skill or tool fits; handle with native tools (bash, read/write/edit, grep, glob).
+3. **Marketplace skill search** — No local skill matched. Search for a skill in the marketplace:
+   - Run `npx skills search <phase-keywords>` if the skills CLI is available
+   - Or use `websearch` to find a skill (GitHub search: `topic:claude-code-skill <keyword>` or `topic:opencode-skill <keyword>`)
+   - If found, add to catalog with `source: "marketplace"` and use it
+4. **Integration/connection match** — Does a configured connection provide the needed capability?
+5. **CLI tool** — Is a CLI tool the right executor (e.g. `pnpm run typecheck`, `git`)?
+6. **Direct execution** — No skill or tool fits; handle with native tools (bash, read/write/edit, grep, glob).
 
-**How to load a mapped skill:** During execution, use the `skill` tool with `name: <skill-name>` to load the skill instructions into context. The `skill` tool works for skills in the system prompt's `available_skills` list. For skills only found on the filesystem (not in `available_skills`), fall back to reading their `SKILL.md` file directly.
+**How to load a mapped skill:**
+
+| Source | Load Method |
+|--------|------------|
+| `system` | `skill name: <skill-name>` |
+| `filesystem` | Read `SKILL.md` from `path` |
+| `marketplace` | Use `temp-skill` skill (if available) to fetch from `url`, or `webfetch` the SKILL.md raw content, or use `websearch` to find documentation |
 
 ### Mapping Logic
 
@@ -348,9 +391,14 @@ The `Action` field is a single sentence describing what the autopilot is doing r
 For each phase (respecting dependency order):
   1. Print Live Status Display: status → ▶ running, phase → current, action → "Starting phase"
   2. Update session plan: status → in_progress
-  3. If a skill is mapped, load it using the `skill` tool: `skill name: <skill-name>`
-     - If the skill is not in available_skills (e.g. only on filesystem), read SKILL.md directly
-     - Do not re-load a skill already loaded in this session
+  3a. If a skill is mapped with source "system":
+      - Load it using the `skill` tool: `skill name: <skill-name>`
+  3b. If a skill is mapped with source "filesystem":
+      - Read SKILL.md directly from the discovered path
+  3c. If a skill is mapped with source "marketplace":
+      - Use `temp-skill` to fetch from URL, or webfetch the SKILL.md
+      - If fetch fails, use websearch for the skill's instructions as fallback
+  3d. Do not re-load a skill already loaded in this session
   4. Print Live Status Display: action → "{skill}: {brief description of task}"
   5. Generate prompt (see Prompt Generation below)
   6. Execute the phase using the mapped skill/tools
@@ -507,9 +555,13 @@ If a phase fails:
 
   If still failing after retry 1:
   5. Print Live Status Display: action → "Retry 1 failed, searching for better skill"
-  6. Search for a more specific skill matching the phase topic + error keyword.
-  7. If a better skill is found: load it via the `skill` tool (or read SKILL.md for filesystem-only skills) and retry (attempt 2 of 2).
-  8. If no better skill found: try one alternative approach (different library, simpler implementation).
+  6. Search locally for a more specific skill matching the phase topic + error keyword.
+  7a. If a local skill is found: load it (skill tool / read SKILL.md) and retry (attempt 2 of 2).
+  7b. If no local skill matches: search the marketplace:
+      - Run `npx skills search <phase-keyword> <error-keyword>` if skills CLI is available
+      - Or websearch for "opencode skill <phase-keyword> <error-keyword>"
+      - If a marketplace skill is found, load it via temp-skill or webfetch and retry
+  8. If no better skill found anywhere: try one alternative approach (different library, simpler implementation).
 
   If still failing after attempt 2:
   9. For non-blocking phase:
