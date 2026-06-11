@@ -1,7 +1,7 @@
 {
   "name": "autopilot-agent-skill",
-  "version": "1.1.0",
-  "description": "Autonomous orchestrator skill for OpenClaude and Claude Code. Takes a goal, discovers available tools, decomposes into phases, maps to skills, executes, and monitors until done.",
+  "version": "1.2.0",
+  "description": "Autonomous orchestrator skill for Claude Code, OpenClaude, Copilot, Cursor, and Kilo. Takes a goal, discovers available skills/MCP/CLI tools, decomposes into phases, maps to skills, executes with monitoring, and verifies until done.",
   "main": "bin/install.js",
   "bin": {
     "autopilot-agent-skill": "./bin/install.js"
