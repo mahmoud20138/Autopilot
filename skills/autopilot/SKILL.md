@@ -80,15 +80,26 @@ For each directory that exists, iterate over subdirectories looking for `SKILL.m
 **Source 3 — Online Marketplace & Browser Search (Proactive):**
 Proactively search online registries, GitHub, and marketplaces for skills and plugins matching the goal — run during discovery, NOT deferred. Use these methods in order:
 
-a. **`find-skills` skill** — If the `find-skills` skill is in `available_skills`, load it to search marketplaces for skills matching the goal keywords. This is the fastest method.
-b. **`npx skills search <topic>`** — If the `opencode` or `skills` CLI is available, search the skills registry for a matching skill. Use the goal's key phrases as search terms.
-c. **Web Search** — Use `websearch` to search for skills at:
+**a. Curated reference sources (check FIRST):**
+Fetch these known, maintained registries for matching skills/plugins/MCP servers:
+| Source | URL | What to search for |
+|--------|-----|-------------------|
+| Awesome MCP Servers | `https://github.com/punkpeye/awesome-mcp-servers` | MCP servers matching the goal domain |
+| Agents Collection | `https://github.com/wshobson/agents` | Agent skills matching the phase needs |
+| Claude Code Plugins+Skills | `https://github.com/jeremylongshore/claude-code-plugins-plus-skills` | Claude Code plugins and skills for the goal |
+| CC Marketplace | `https://github.com/ananddtyagi/cc-marketplace` | Marketplace skills and plugins |
+| Build With Claude | `https://buildwithclaude.com/plugins` | Claude plugins for the goal domain |
+
+Use `webfetch` on each URL, then search the page content for entries matching the goal keywords. For any matching entry, extract the GitHub URL, skill name, description, and install method.
+
+**b.** `find-skills` skill — If in `available_skills`, load it to search across known marketplaces.
+**c.** `npx skills search <topic>` — If the `opencode` or `skills` CLI is available.
+**d.** Web Search — Use `websearch` as fallback to search for:
    - GitHub topics: `topic:opencode-skill`, `topic:claude-code-skill`, `topic:claude-code-plugin`
-   - Skills registries: `site:opencode.ai/skills`, `site:github.com/topics/opencode-skill`
    - Direct search: `"opencode skill" <goal-keyword>`, `"claude code skill" <goal-keyword>`
    - Plugin ecosystems: `"mcp server" <domain>`, `"plugin" <goal-keyword>`
-d. **Website Fetch** — Use `webfetch` to crawl known skill registry pages and marketplace listings for available skills. Fetch raw SKILL.md URLs from GitHub repos when found.
-e. **Temp skill loader** — If a skill is found remotely, use the `temp-skill` skill (when available) to fetch and load it without permanent installation. If temp-skill is not available, use `webfetch` to read the raw SKILL.md and follow its instructions directly.
+**e.** Website Fetch — Use `webfetch` to crawl skill registry pages and marketplace listings. Fetch raw SKILL.md URLs from GitHub repos when found.
+**f.** Temp skill loader — If a skill is found remotely, use the `temp-skill` skill (when available) to fetch and load it without permanent installation. If temp-skill is not available, use `webfetch` to read the raw SKILL.md and follow its instructions directly.
 
 Marketplace-found skills go in the catalog with source `"marketplace"`, a `url` field, and a `methods` field documenting how it was found (for future reference).
 
@@ -195,7 +206,19 @@ After scanning local tools but before analysis, run a proactive online search fo
 
 **Use these tools in priority order:**
 
-1. **`websearch`** — Search for skills, plugins, MCP servers, and frameworks matching the goal:
+**1. Curated reference sources (fetch FIRST, in parallel):**
+Use `webfetch` on each of these known registries and extract entries matching the goal:
+| Source | URL | What to extract |
+|--------|-----|----------------|
+| Awesome MCP Servers | `https://github.com/punkpeye/awesome-mcp-servers` | MCP servers for the goal domain |
+| Agents Collection | `https://github.com/wshobson/agents` | Agent skills for phase needs |
+| Claude Code Plugins+Skills | `https://github.com/jeremylongshore/claude-code-plugins-plus-skills` | Claude Code plugins and skills |
+| CC Marketplace | `https://github.com/ananddtyagi/cc-marketplace` | Marketplace skills and plugins |
+| Build With Claude | `https://buildwithclaude.com/plugins` | Claude plugins for the goal domain |
+
+For each matching entry, extract: name, description, GitHub URL, author, install method.
+
+**2. `websearch`** — Broaden the search with targeted queries:
    ```
    Search queries (run in parallel):
    - "opencode skill <goal-keyword>"
@@ -206,9 +229,9 @@ After scanning local tools but before analysis, run a proactive online search fo
    - site:github.com/topics/opencode-skill
    - site:github.com/topics/claude-code-skill
    ```
-2. **`webfetch`** — Fetch raw SKILL.md files from discovered GitHub repos, registry pages, and marketplace listings to read their capabilities.
-3. **`find-skills` skill** — If in `available_skills`, load and use it to search across known marketplaces.
-4. **`npx skills search`** — If the `skills` CLI is detected on the system.
+**3. `webfetch`** — Fetch raw SKILL.md files from discovered GitHub repos, registry pages, and marketplace listings to read their capabilities.
+**4. `find-skills` skill** — If in `available_skills`, load and use it to search across known marketplaces.
+**5. `npx skills search`** — If the `skills` CLI is detected on the system.
 
 **For each skill/plugin found online:**
 - Extract: name, description, source URL, author
@@ -224,7 +247,7 @@ After scanning local tools but before analysis, run a proactive online search fo
 Online search complete:
   N new skills discovered (N high relevance)
   N new plugins/MCP servers discovered
-  Registries searched: opencode marketplace, GitHub topics, web
+  Sources checked: Awesome MCP Servers, Agents, Claude Code Plugins+Skills, CC Marketplace, Build With Claude, GitHub topics, web
   Top finds: {skill-1}, {skill-2}, {skill-3} (high relevance)
 ```
 
@@ -622,8 +645,14 @@ If a phase fails:
   5. Print Live Status Display: action → "Retry 1 failed, searching for better skill"
   6. Search locally for a more specific skill matching the phase topic + error keyword.
   7a. If a local skill is found: load it (skill tool / read SKILL.md) and retry (attempt 2 of 2).
-  7b. If no local skill matches: search the marketplace:
-      - Run `npx skills search <phase-keyword> <error-keyword>` if skills CLI is available
+  7b. If no local skill matches: search online sources:
+      - Fetch curated registries first:
+        - `https://github.com/punkpeye/awesome-mcp-servers`
+        - `https://github.com/wshobson/agents`
+        - `https://github.com/jeremylongshore/claude-code-plugins-plus-skills`
+        - `https://github.com/ananddtyagi/cc-marketplace`
+        - `https://buildwithclaude.com/plugins`
+      - Or run `npx skills search <phase-keyword> <error-keyword>` if skills CLI is available
       - Or load the `find-skills` skill if it's in `available_skills`
       - Or websearch for "opencode skill <phase-keyword> <error-keyword>"
       - If a marketplace skill is found, load it via temp-skill or webfetch and retry
